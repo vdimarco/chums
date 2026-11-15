@@ -1,0 +1,23 @@
+apply plugin: 'com.android.application'
+apply from: '../provider.gradle'
+android {
+    defaultConfig {
+        applicationId 'club.chums.wear.codex'
+        buildConfigField 'String', 'FIXED_AGENT', '\"noodle\"'
+        buildConfigField 'String', 'APP_TITLE', '\"Codex Watch\"'
+        manifestPlaceholders = [appLabel: 'Codex Watch', appIcon: '@drawable/provider_icon']
+    }
+    sourceSets {
+        main {
+            manifest.srcFile '../app/src/main/AndroidManifest.xml'
+            java.srcDirs = ['../app/src/main/java']
+            res.srcDirs = ['../app/src/main/res', 'src/main/res']
+            assets.srcDirs = ['../app/src/main/assets']
+        }
+        debug {
+            manifest.srcFile '../app/src/debug/AndroidManifest.xml'
+            res.srcDirs = ['../app/src/debug/res']
+        }
+        test.java.srcDirs = ['../app/src/test/java']
+    }
+}

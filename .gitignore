@@ -36,3 +36,8 @@ design/noodle/renders/preview.log
 # logs
 *.log
 .claude/
+
+# Android local settings and build outputs
+wear/.gradle/
+wear/**/build/
+wear/local.properties
