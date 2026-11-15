@@ -7,8 +7,8 @@ android {
         minSdk 30
         targetSdk 35
         testInstrumentationRunner 'club.chums.wear.MemoryInstrumentation'
-        versionCode 1
-        versionName '0.1.0'
+        versionCode 2
+        versionName '0.2.0'
         buildConfigField 'String', 'FIXED_AGENT', '""'
         buildConfigField 'String', 'APP_TITLE', '"migos"'
         manifestPlaceholders = [appLabel: 'ai migos', appIcon: '@drawable/migos_logo']

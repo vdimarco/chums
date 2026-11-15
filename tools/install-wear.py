@@ -12,15 +12,20 @@ PACKAGES = {name: 'club.chums.wear' + ('' if name == 'app' else '.' + name)
             for name in ('app', 'codex', 'claude', 'grokbot')}
 
 
-def preferences(address, token):
+def preferences(address, token, existing=None):
     url = urlsplit(address)
     local = url.scheme == 'http' and url.hostname == '127.0.0.1'
     if not (url.scheme == 'https' or local) or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
         raise ValueError('Use an HTTPS origin, or http://127.0.0.1:7718 for ADB forwarding')
     if not isinstance(token, str) or not token.strip() or '\n' in token or '\r' in token:
         raise ValueError('The watch token is missing or invalid')
-    root = ET.Element('map')
+    root = ET.fromstring(existing) if existing else ET.Element('map')
+    if root.tag != 'map':
+        raise ValueError('Existing preferences are invalid; refusing to overwrite them')
     for name, value in [('url', address.rstrip('/')), ('token', token)]:
+        for item in list(root):
+            if item.get('name') == name:
+                root.remove(item)
         ET.SubElement(root, 'string', name=name).text = value
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)
 
@@ -41,6 +46,10 @@ def main():
             except ValueError:
                 continue
             raise AssertionError('Accepted an invalid endpoint')
+        merged = ET.fromstring(preferences('https://example.com', 'new', b'<map><string name="draft">keep me</string><boolean name="alerts" value="true"/><string name="token">old</string></map>'))
+        assert merged.find("string[@name='draft']").text == 'keep me'
+        assert merged.find("boolean[@name='alerts']").get('value') == 'true'
+        assert len(merged.findall("string[@name='token']")) == 1
         print('Wear provisioning checks passed')
         return
     package = PACKAGES[args.app]
@@ -53,6 +62,8 @@ def main():
     subprocess.run(adb + ['get-state'], check=True, capture_output=True)
     subprocess.run(adb + ['install', '-r', str(apk)], check=True)
     subprocess.run(adb + ['shell', 'am', 'force-stop', package], check=True)
+    current = subprocess.run(adb + ['shell', 'run-as', package, 'sh', '-c', "'if [ -f shared_prefs/hub.xml ]; then cat shared_prefs/hub.xml; else echo \"<map/>\"; fi'"], check=True, capture_output=True)
+    data = preferences(args.url, config.get('watchToken'), current.stdout)
     subprocess.run(adb + ['shell', f"run-as {package} sh -c 'mkdir -p shared_prefs && cat > shared_prefs/hub.xml'"], input=data, check=True, stdout=subprocess.DEVNULL)
     if urlsplit(args.url).scheme == 'http':
         port = urlsplit(args.url).port or 80

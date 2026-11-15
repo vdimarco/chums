@@ -92,6 +92,7 @@ public final class MainActivity extends Activity {
         getIntent().removeExtra("tile_action");
         if (action == null) return;
         if (hub == null) { notice("Connect " + BuildConfig.APP_TITLE + " first"); return; }
+        if ("history".equals(action)) { showConversation(); return; }
         if ("voice".equals(action) || "agent".equals(action)) startLive();
     }
     private void startLive() {
@@ -152,7 +153,7 @@ public final class MainActivity extends Activity {
         b.setTextSize(14); b.setTextColor(BuildConfig.FIXED_AGENT.isEmpty() ? Color.WHITE : "squint".equals(BuildConfig.FIXED_AGENT) ? Color.WHITE : 0xff101714);
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setColor(BuildConfig.FIXED_AGENT.isEmpty() ? 0xff1d292b : ProviderHome.accent()); shape.setCornerRadius(dp("noodle".equals(BuildConfig.FIXED_AGENT) ? 8 : 26)); b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x4480e1d6), shape, null));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(48)); params.topMargin = dp(8);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2); params.topMargin = dp(8);
         content.addView(b, params);
         b.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); action.run(); }); return b;
     }
@@ -280,6 +281,15 @@ public final class MainActivity extends Activity {
     }
 
     private void showProviderHome() {
+        if (getResources().getConfiguration().fontScale >= 1.3f) {
+            page(BuildConfig.APP_TITLE);
+            connectionMark = label("", 14);
+            button("Talk to " + AgentVoice.name(selected), this::startLive);
+            button("Conversation history", this::showConversation);
+            button("Connection settings", this::showSettings);
+            updateHeading();
+            return;
+        }
         main.removeCallbacks(cycleMigo);
         if (pet != null) { pet.stop(); pet = null; }
         companion = null; scroll = null;
@@ -300,6 +310,7 @@ public final class MainActivity extends Activity {
         page(name);
         button("Live voice", this::startLive);
         button("Type a message", this::composeMessage).setEnabled(!sending);
+        button("Agent workspace", () -> startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected)));
         if (state == null) label(connected ? "No messages yet" : "Waiting for the hub. Check your connection.", 12);
         for (int i = 0; i < array("agents").length(); i++) {
             JSONObject agent = array("agents").optJSONObject(i);
@@ -328,7 +339,14 @@ public final class MainActivity extends Activity {
             message.setGravity(Gravity.START);
             message.setTextColor("echo".equals(line.optString("kind")) ? ("squint".equals(BuildConfig.FIXED_AGENT) ? 0xffd0ae8f : 0xffb5c3c5) : ProviderHome.ink());
             if (latest.isEmpty() && !"echo".equals(line.optString("kind"))) latest = text;
-            if (line.has("artifact") && !line.isNull("artifact")) label("Attachment available in the desktop/phone client", 12);
+            if (line.optJSONObject("card") != null) {
+                WatchCard card = new WatchCard(this); content.addView(card); card.show(line.optJSONObject("card"));
+            }
+            JSONObject artifact = line.optJSONObject("artifact");
+            if (artifact != null && artifact.optString("id").matches("[0-9a-f]{12}")) {
+                button("Open " + artifact.optString("title", "attachment"), () -> startActivity(
+                    new Intent(this, WorkspaceActivity.class).putExtra("agent", selected).putExtra("artifact", artifact.toString())));
+            }
         }
         String reply = latest;
         if (!reply.isEmpty()) button("Read reply aloud", () -> {

@@ -10,6 +10,24 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class HubConnectionTest {
+    @Test public void preservesBinaryAttachmentBytes() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
+            Thread reply = new Thread(() -> {
+                try (var socket = server.accept()) {
+                    var reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                    while (!reader.readLine().isEmpty()) { }
+                    socket.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                    socket.getOutputStream().write(new byte[]{0, -1, -128, 42});
+                } catch (java.io.IOException e) { throw new RuntimeException(e); }
+            });
+            reply.start();
+            HubConnection hub = new HubConnection("http://127.0.0.1:" + server.getLocalPort(), "fixture", true);
+            assertArrayEquals(new byte[]{0, -1, -128, 42}, hub.requestBytes("/v1/artifact/abcdef012345/full", null));
+            assertThrows(java.io.IOException.class, () -> hub.requestBytes("/v1/../config", null));
+            reply.join(1000);
+        }
+    }
+
     @Test public void validatesAddressesAndTokens() {
         assertEquals("https://example.com", new HubConnection(" https://example.com/ ", "secret", false).base);
         for (String url : new String[]{"http://example.com", "https://user:pass@example.com", "https://example.com/path", "https://example.com?token=x", "https://example.com/#x", "garbage"}) {
@@ -51,8 +69,8 @@ public class HubConnectionTest {
             assertEquals("{\"kind\":\"order\"}", hub.request("/v1/say", "{\"text\":\"hello\"}"));
             assertEquals("Bearer test-secret", auth.get());
             assertEquals("{\"text\":\"hello\"}", body.get());
-            assertThrows(java.io.IOException.class, () -> hub.request("/redirect", null));
-            assertEquals("Hub refused the watch token", assertThrows(java.io.IOException.class, () -> hub.request("/denied", null)).getMessage());
+            assertThrows(java.io.IOException.class, () -> hub.request("/v1/redirect", null));
+            assertEquals("Hub refused the watch token", assertThrows(java.io.IOException.class, () -> hub.request("/v1/denied", null)).getMessage());
         } finally { server.close(); responder.join(1000); }
     }
 }

@@ -26,6 +26,12 @@ final class HubConnection {
     }
 
     String request(String path, String body) throws IOException {
+        return new String(requestBytes(path, body), StandardCharsets.UTF_8);
+    }
+
+    byte[] requestBytes(String path, String body) throws IOException {
+        if (!path.startsWith("/v1/") || path.contains("..") || path.contains("#"))
+            throw new IOException("Invalid hub resource");
         HttpURLConnection connection = (HttpURLConnection) URI.create(base + path).toURL().openConnection();
         connection.setInstanceFollowRedirects(false);
         connection.setConnectTimeout(8000);
@@ -48,7 +54,7 @@ final class HubConnection {
                     if (result.size() + count > 16 * 1024 * 1024) throw new IOException("Hub response too large");
                     result.write(buffer, 0, count);
                 }
-                return result.toString(StandardCharsets.UTF_8.name());
+                return result.toByteArray();
             }
         } finally { connection.disconnect(); }
     }

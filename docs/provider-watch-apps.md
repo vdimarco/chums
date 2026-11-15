@@ -97,15 +97,39 @@ available source trees; no decompilation or original-app runtime comparison was 
 | Separate apps and fixed provider routing | Built; unit and emulator checks |
 | Voice input and spoken agent responses | Implemented; deterministic routing/approval/error/cancellation checks pass; live accounts and microphone unverified |
 | Typed messages | Native composer with empty-input validation, retained failed-send draft, existing `/v1/say` protocol |
-| Agent replies, approvals, status | Implemented through existing hub state; foreground polling only |
-| Streamed cards and images | Implemented in live voice; attachments in history still require phone/desktop |
+| Agent replies, approvals, status | Implemented through existing hub state; foreground polling plus optional scheduled background checks |
+| Streamed cards and images | Implemented in live voice; history cards and authenticated artifact previews are now supported; previews require a compatible hub/proxy |
 | Consumer ChatGPT/Claude/Grok history | Not integrated |
-| Multiple sessions, project/file browser, model selection | Not exposed by these watch interfaces |
+| Model selection and tool activity | Agent workspace uses the hub catalog and provider-specific model endpoint; unavailable capabilities are shown explicitly |
+| Multiple sessions and project/file browser | Not exposed by the current hub/watch interfaces |
 | Desktop editors, terminal, diff/review workflows | Run remotely; no equivalent watch UI |
-| Background notifications / task completion alerts | Not implemented |
-| Physical watch audio, connectivity transitions, battery, accessibility at larger font sizes | Requires device verification |
+| Background notifications / task completion alerts | Optional 15-minute scheduled checks, deduplicated per hub/provider; Android can delay delivery |
+| Physical watch audio, connectivity transitions and battery | Requires device verification |
 
 The published scope is the Android clients and artwork. Existing local cloud/hub
 extensions are separate work and are not part of this client commit. Voice needs a
 compatible deployed hub providing `/v1/realtime/session`, `/v1/say`, `/v1/state` and
 `/v1/verdict`; the upstream hub alone is not evidence of live-voice readiness.
+
+
+## Version 0.2.0 verification and installation status
+
+- Added Agent workspace, hub-provided model selection, recent tool activity, history
+  cards, and authenticated attachment previews. Model changes require confirmation.
+- Optional background checks notify about terminal replies and approvals without
+  showing message content. Enabling checks records a baseline; failures retain
+  the cursor and disabling checks cancels the job. Android schedules these checks,
+  so they are not instant push alerts. See [JobScheduler timing](https://developer.android.com/reference/android/app/job/JobInfo.Builder).
+- Large text settings (130% and above) use a scrollable provider-themed home with
+  full-size controls. Connection updates preserve existing preferences and drafts.
+- `tools/test-provider-workspace.py` checks real app navigation against a local
+  fixture: model routing, notification delivery/disable and authenticated previews.
+  `tools/test-provider-large-text.py` checks all home controls at 150% text size.
+  Both scripts refuse physical-device serials.
+- The cloud image relay correction is local work in `cloud/lib/relay.mjs` and
+  `cloud/lib/sandbox.mjs`, tested by `tools/test-cloud-relay.mjs`. It has not been
+  deployed. A JSON-only cloud proxy cannot yet serve the new artifact previews.
+- Physical installation is pending an accessible wireless-debugging endpoint.
+  The previous endpoint was unreachable. Live account authentication, microphone,
+  battery and consumer-history integration remain unresolved; this is not a
+  declaration of full feature parity.
