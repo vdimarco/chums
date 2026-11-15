@@ -126,9 +126,15 @@ compatible deployed hub providing `/v1/realtime/session`, `/v1/say`, `/v1/state`
   fixture: model routing, notification delivery/disable and authenticated previews.
   `tools/test-provider-large-text.py` checks all home controls at 150% text size.
   Both scripts refuse physical-device serials.
-- The cloud image relay correction is local work in `cloud/lib/relay.mjs` and
-  `cloud/lib/sandbox.mjs`, tested by `tools/test-cloud-relay.mjs`. It has not been
-  deployed. A JSON-only cloud proxy cannot yet serve the new artifact previews.
+- The cloud image relay correction is deployed as
+  `dpl_CQ6BS5bAcgKnbasH8iVFXPY7nvFc` on `chums-watch.vercel.app`.
+  `tools/test-cloud-relay.mjs` checks JSON and binary responses and the size limit.
+  The deployed source hashes were verified against the prior production files;
+  only the relay was changed. A first release failed because returned source data
+  was truncated, was rolled back, then replaced with the verified release.
+  Unauthenticated production requests correctly return HTTP 401. An authenticated
+  cloud probe remains blocked: the connector does not return the token value,
+  and the local config targets a different hub.
 - Physical installation is pending an accessible wireless-debugging endpoint.
   The previous endpoint was unreachable. Live account authentication, microphone,
   battery and consumer-history integration remain unresolved; this is not a
