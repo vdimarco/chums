@@ -32,12 +32,12 @@ final class WatchCard extends LinearLayout {
     WatchCard(Context context) {
         super(context); setOrientation(VERTICAL); setGravity(Gravity.CENTER);
         setPadding(dp(10), dp(8), dp(10), dp(8));
-        GradientDrawable background = new GradientDrawable(); background.setColor(0xff151c22); background.setCornerRadius(dp(14)); setBackground(background);
-        title = text(16, 0xff80e1d6); title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        body = text(12, Color.WHITE);
+        setBackground(WatchUi.fill(context, WatchUi.surface(), 14));
+        title = text(14, WatchUi.signal()); title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        body = text(12, WatchUi.ink());
         image = new ImageView(context); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         addView(image, new LayoutParams(-1, dp(110)));
-        imageStatus = text(10, 0xffb4bec6); clear();
+        imageStatus = text(10, WatchUi.muted()); clear();
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private TextView text(int size, int color) {

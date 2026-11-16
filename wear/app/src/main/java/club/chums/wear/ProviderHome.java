@@ -14,25 +14,11 @@ import java.util.ArrayList;
 
 /** Native controls over a provider-specific dial, scaled to the round display. */
 final class ProviderHome extends FrameLayout {
-    static int background() {
-        return switch (BuildConfig.FIXED_AGENT) {
-            case "noodle" -> 0xff101112;
-            case "squint" -> 0xff190b05;
-            case "stretch" -> Color.BLACK;
-            default -> Color.BLACK;
-        };
-    }
-    static int ink() { return "squint".equals(BuildConfig.FIXED_AGENT) ? 0xffffedd5 : Color.WHITE; }
-    static int accent() {
-        return switch (BuildConfig.FIXED_AGENT) {
-            case "noodle" -> 0xfffff2d5;
-            case "squint" -> 0xffcf642f;
-            case "stretch" -> 0xffeeeeec;
-            default -> 0xff80e1d6;
-        };
-    }
+    static int background() { return WatchUi.background(); }
+    static int ink() { return WatchUi.ink(); }
+    static int accent() { return WatchUi.signal(); }
     private final Bitmap artwork;
-    private final Paint paint = new Paint(3);
+    private final Paint paint = new Paint(3), scrim = new Paint();
     private final ArrayList<float[]> boxes = new ArrayList<>();
     final TextView status;
     final TextView task;
@@ -44,36 +30,27 @@ final class ProviderHome extends FrameLayout {
             artwork = BitmapFactory.decodeStream(stream, null, options);
             if (artwork == null) throw new IllegalStateException("Provider artwork could not be decoded");
         } catch (java.io.IOException e) { throw new IllegalStateException("Provider artwork is missing", e); }
-        if ("noodle".equals(agent)) {
-            text("codex", 20, 0xfffffaf0, "sans-serif-medium", 55, 23, 98, 28);
-            status = text("", 9, 0xffb6b4a9, "sans-serif", 60, 203, 88, 14);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffd0cfc8, Color.TRANSPARENT, 24, 153, 24, 48, 48, settings);
-            action(">_  New task", "Talk to Codex", 13, 0xff171713, 0xfffff2d5, 27, 23, 154, 112, 48, talk);
-            icon(R.drawable.ic_provider_history, "Conversation history", 0xfff4eddd, 0xff292a29, 26, 143, 154, 48, 48, history);
-        } else if ("squint".equals(agent)) {
-            text("Claude", 21, 0xffffeed6, "serif", 21, 46, 87, 29);
-            status = text("", 9, 0xffc3a88b, "sans-serif", 23, 79, 80, 14);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe0c5a8, Color.TRANSPARENT, 24, 91, 9, 48, 48, settings);
-            icon(R.drawable.ic_voice_mic, "Talk to Claude", 0xff251308, 0xffffedcd, 30, 132, 154, 56, 56, talk);
-            action("History", "Conversation history", 12, 0xffffe4c5, 0xaa421d0c, 26, 25, 160, 87, 48, history);
-        } else {
-            text("grok", 25, Color.WHITE, "sans-serif-black", 65, 23, 78, 32);
-            status = text("", 9, 0xffa5a5a5, "sans-serif", 61, 57, 86, 14);
-            icon(R.drawable.ic_voice_mic, "Talk to Grok", Color.WHITE, 0xff090909, 30, 139, 154, 56, 56, talk);
-            icon(R.drawable.ic_provider_history, "Conversation history", 0xffe9e9e7, 0xff181919, 26, 23, 166, 48, 48, history);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe9e9e7, 0xff181919, 26, 20, 33, 48, 48, settings);
-        }
-        task = action("Checking task status", "Open current task", 12, ink(),
-            "squint".equals(agent) ? 0xee32180e : 0xee17191a, 14, 24, 94, 160, 48, history);
+        // One layout for every provider, in a 228-unit square. Each control stays inside the round screen.
+        String word = switch (agent) { case "noodle" -> "codex"; case "squint" -> "Claude"; default -> "grok"; };
+        String face = switch (agent) { case "noodle" -> "monospace"; case "squint" -> "serif"; default -> "sans-serif-black"; };
+        text(word, 20, WatchUi.ink(), face, 54, 17, 120, 28);
+        status = text("", 10, WatchUi.muted(), "sans-serif", 34, 46, 160, 16);
+        task = action("Checking task status", "Open current task", 12, WatchUi.ink(),
+            (WatchUi.surface() & 0xffffff) | 0xeb000000, WatchUi.radius(), 22, 78, 184, 56, history);
         task.setMaxLines(2);
         task.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        task.setPadding(12, 0, 12, 0);
+        task.setLineSpacing(0, 1.1f);
+        task.setPadding(pad(12), 0, pad(12), 0);
+        icon(R.drawable.ic_provider_history, "Conversation history", WatchUi.ink(), WatchUi.raised(), 32, 152, 48, 48, history);
+        icon(R.drawable.ic_voice_mic, "Talk to " + AgentVoice.name(agent), WatchUi.onAccent(), WatchUi.accent(), 86, 158, 56, 56, talk);
+        icon(R.drawable.ic_provider_settings, "Connection settings", WatchUi.ink(), WatchUi.raised(), 148, 152, 48, 48, settings);
     }
+    private int pad(int value) { return WatchUi.dp(getContext(), value); }
 
     private TextView text(String value, int size, int color, String font, int x, int y, int w, int h) {
         TextView view = new TextView(getContext()); view.setText(value); view.setTextSize(size);
         view.setTextColor(color); view.setGravity(Gravity.CENTER); view.setIncludeFontPadding(false);
-        if (size > 9) view.setAutoSizeTextTypeUniformWithConfiguration(9, size, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+        if (size > 12) view.setAutoSizeTextTypeUniformWithConfiguration(12, size, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         view.setTypeface(Typeface.create(font, Typeface.NORMAL));
         addView(view); boxes.add(new float[]{x, y, w, h}); return view;
     }
@@ -89,31 +66,27 @@ final class ProviderHome extends FrameLayout {
         });
         GradientDrawable shape = new GradientDrawable(); shape.setColor(fill);
         shape.setCornerRadius(radius * getResources().getDisplayMetrics().density);
-        int inset = "History".equals(value) ? Math.round(8 * getResources().getDisplayMetrics().density) : 0;
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x337f9ba3),
-            new android.graphics.drawable.InsetDrawable(shape, 0, inset, 0, inset), null));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33ffffff), shape, null));
         view.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
         return view;
     }
-    private void icon(int resource, String description, int ink, int fill, int radius,
-                      int x, int y, int w, int h, Runnable run) {
+    private void icon(int resource, String description, int ink, int fill, int x, int y, int w, int h, Runnable run) {
         ImageButton view = new ImageButton(getContext()); view.setImageResource(resource);
         view.setImageTintList(ColorStateList.valueOf(ink)); view.setContentDescription(description);
-        int padding = Math.round((resource == R.drawable.ic_voice_mic ? 15 : 17) * getResources().getDisplayMetrics().density);
         view.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        GradientDrawable shape = new GradientDrawable(); shape.setColor(fill);
-        shape.setCornerRadius(radius * getResources().getDisplayMetrics().density);
-        shape.setStroke(1, fill == Color.TRANSPARENT ? Color.TRANSPARENT : 0x337b7a74);
-        int inset = Math.round((resource == R.drawable.ic_voice_mic ? 0 : 6) * getResources().getDisplayMetrics().density);
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x337f7f7f),
-            new android.graphics.drawable.InsetDrawable(shape, inset), null));
+        // The primary circle fills its 56 dp box. A secondary circle is 40 dp in a 48 dp touch target.
+        boolean primary = w > 48;
+        GradientDrawable shape = new GradientDrawable(); shape.setShape(GradientDrawable.OVAL); shape.setColor(fill);
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33ffffff),
+            new android.graphics.drawable.InsetDrawable(shape, primary ? 0 : pad(4)), null));
+        int padding = pad(primary ? 15 : 14);
         view.setPadding(padding, padding, padding, padding);
         addView(view); boxes.add(new float[]{x,y,w,h});
         view.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
     }
     private int[] bounds(int index, int width, int height) {
         float scale = Math.min(width, height) / 228f;
-        float ox = (width - 208 * scale) / 2, oy = (height - 228 * scale) / 2;
+        float ox = (width - 228 * scale) / 2, oy = (height - 228 * scale) / 2;
         float[] b = boxes.get(index);
         float minimum = getChildAt(index).isClickable() ? 48 * getResources().getDisplayMetrics().density : 0;
         float w = Math.max(minimum, b[2]*scale), h = Math.max(minimum, b[3]*scale);
@@ -136,11 +109,20 @@ final class ProviderHome extends FrameLayout {
             getChildAt(i).layout(b[0],b[1],b[2],b[3]);
         }
     }
+    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) { scrim.setShader(null); }
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         canvas.drawColor(Color.BLACK);
         float side = Math.min(getWidth(), getHeight());
         float left = (getWidth()-side)/2, top = (getHeight()-side)/2;
         canvas.drawBitmap(artwork, null, new RectF(left, top, left+side, top+side), paint);
+        // Darken the artwork behind the name and the actions so that text stays readable.
+        if (scrim.getShader() == null) {
+            int c = WatchUi.background() & 0xffffff;
+            scrim.setShader(new LinearGradient(0, top, 0, top+side,
+                new int[]{c | 0xd1000000, c | 0x4d000000, c | 0x4d000000, c | 0xe6000000, c | 0xe6000000},
+                new float[]{0, .32f, .48f, .76f, 1}, Shader.TileMode.CLAMP));
+        }
+        canvas.drawRect(left, top, left+side, top+side, scrim);
     }
 }

@@ -120,47 +120,19 @@ public final class MainActivity extends Activity {
     private void page(String title) {
         main.removeCallbacks(cycleMigo); companion = null; companionCaption = null; taskCard = null;
         if (pet != null) { pet.stop(); pet = null; }
-        scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setGravity(Gravity.CENTER_HORIZONTAL);
-        // Round screens need space above and below the first and last controls.
-        content.setPadding(dp(26), dp(18), dp(26), dp(32));
-        scroll.setBackgroundColor(ProviderHome.background());
-        scroll.addView(content);
-        setContentView(scroll);
-        heading = label(title, 20);
-        if (!BuildConfig.FIXED_AGENT.isEmpty()) heading.setTypeface(android.graphics.Typeface.create(
-            "squint".equals(BuildConfig.FIXED_AGENT) ? "serif" : "noodle".equals(BuildConfig.FIXED_AGENT) ? "monospace" : "sans-serif-medium",
-            android.graphics.Typeface.NORMAL));
-        scroll.setOnGenericMotionListener((v, event) -> {
-            if (event.getAction() != android.view.MotionEvent.ACTION_SCROLL) return false;
-            scroll.smoothScrollBy(0, Math.round(-event.getAxisValue(android.view.MotionEvent.AXIS_SCROLL) * dp(36)));
-            return true;
-        });
-        scroll.requestFocus();
+        content = WatchUi.page(this);
+        scroll = (ScrollView) content.getParent();
+        heading = WatchUi.title(content, title);
     }
-    private TextView label(String text, int size) {
-        TextView v = new TextView(this);
-        v.setText(text); v.setTextSize(size); v.setTextColor(ProviderHome.ink());
-        v.setGravity(Gravity.CENTER); v.setPadding(0, dp(6), 0, dp(6));
-        content.addView(v, new LinearLayout.LayoutParams(-1, -2));
-        return v;
-    }
-    private Button button(String title, Runnable action) {
-        Button b = new Button(this); b.setText(title); b.setAllCaps(false); b.setMinHeight(dp(48));
-        b.setTextSize(14); b.setTextColor(BuildConfig.FIXED_AGENT.isEmpty() ? Color.WHITE : "squint".equals(BuildConfig.FIXED_AGENT) ? Color.WHITE : 0xff101714);
-        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
-        shape.setColor(BuildConfig.FIXED_AGENT.isEmpty() ? 0xff1d292b : ProviderHome.accent()); shape.setCornerRadius(dp("noodle".equals(BuildConfig.FIXED_AGENT) ? 8 : 26)); b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x4480e1d6), shape, null));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2); params.topMargin = dp(8);
-        content.addView(b, params);
-        b.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); action.run(); }); return b;
-    }
+    private TextView label(String text, int size) { return WatchUi.text(content, text, size, WatchUi.ink()); }
+    private Button button(String title, Runnable action) { return WatchUi.button(content, title, false, action); }
+    private Button primary(String title, Runnable action) { return WatchUi.button(content, title, true, action); }
     private EditText input(String hint, String value, int type) {
         EditText e = new EditText(this); e.setHint(hint); e.setText(value); e.setTextSize(14);
-        e.setTextColor(ProviderHome.ink()); e.setHintTextColor(0xff928779);
+        e.setTextColor(WatchUi.ink()); e.setHintTextColor(WatchUi.muted());
         e.setInputType(type); e.setSingleLine(true); e.setMinHeight(dp(48));
+        e.setPadding(dp(14), 0, dp(14), 0);
+        e.setBackground(WatchUi.fill(this, WatchUi.surface(), WatchUi.radius()));
         content.addView(e, new LinearLayout.LayoutParams(-1, -2)); return e;
     }
     private void notice(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
@@ -170,11 +142,11 @@ public final class MainActivity extends Activity {
     private void showSettings() {
         settings = true; generation++;
         page("Connect " + BuildConfig.APP_TITLE);
-        label("Hub HTTPS address", 14);
+        label("Hub HTTPS address", 12).setTextColor(WatchUi.muted());
         EditText url = input("https://your-hub", prefs.getString("url", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        label("Watch token", 14);
+        label("Watch token", 12).setTextColor(WatchUi.muted());
         EditText token = input("Watch token", prefs.getString("token", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        button("Save connection", () -> {
+        primary("Save connection", () -> {
             try {
                 HubConnection next = new HubConnection(url.getText().toString(), token.getText().toString(), BuildConfig.DEBUG);
                 prefs.edit().putString("url", next.base).putString("token", token.getText().toString().trim()).apply();
@@ -240,7 +212,7 @@ public final class MainActivity extends Activity {
         top.addView(new android.view.View(this), new LinearLayout.LayoutParams(dp(48), -1));
         LinearLayout brand = new LinearLayout(this); brand.setGravity(Gravity.CENTER);
         top.addView(brand, new LinearLayout.LayoutParams(0, -1, 1));
-        heading.setTextSize(16); heading.setPadding(0, 0, 0, 0);
+        heading.setTextSize(16); heading.setPadding(0, 0, 0, 0); heading.setTypeface(android.graphics.Typeface.DEFAULT);
         brand.addView(heading, new LinearLayout.LayoutParams(-2, -1));
         brand.addView(connectionMark, new LinearLayout.LayoutParams(dp(20), -1));
         TextView menu = new TextView(this);
@@ -279,16 +251,16 @@ public final class MainActivity extends Activity {
         content.addView(character, new LinearLayout.LayoutParams(-1, dp(132)));
         if (active) main.postDelayed(cycleMigo, 8000);
         companionCaption = label(AgentVoice.name(migo) + " · tap to talk", 11);
-        companionCaption.setTextColor(0xff80e1d6);
+        companionCaption.setTextColor(WatchUi.signal());
         scroll.post(() -> scroll.scrollTo(0, position));
     }
 
     private void showProviderHome() {
         if (getResources().getConfiguration().fontScale >= 1.3f) {
             page(BuildConfig.APP_TITLE);
-            connectionMark = label("", 14);
+            connectionMark = label("", 12);
             taskCard = button("Current task", this::showConversation);
-            button("Talk to " + AgentVoice.name(selected), this::startLive);
+            primary("Talk to " + AgentVoice.name(selected), this::startLive);
             button("Conversation history", this::showConversation);
             button("Connection settings", this::showSettings);
             updateHeading();
@@ -315,40 +287,47 @@ public final class MainActivity extends Activity {
         page(name);
         if (!BuildConfig.FIXED_AGENT.isEmpty()) {
             TaskSummary task = TaskSummary.from(state, selected, connected);
-            label(task.status, 16).setTextColor(ProviderHome.accent());
+            label(task.status, 12).setTextColor(statusColor(task.status));
             label(task.title, 14);
-            if (!task.detail.isBlank() && !task.detail.equals(task.title)) label(task.detail, 13);
+            if (!task.detail.isBlank() && !task.detail.equals(task.title)) label(task.detail, 12).setTextColor(WatchUi.muted());
+            WatchUi.space(content, 4);
         }
-        button("Live voice", this::startLive);
+        primary("Live voice", this::startLive);
         button("Type a message", this::composeMessage).setEnabled(!sending);
         button("Agent workspace", () -> startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected)));
-        if (state == null) label(connected ? "No messages yet" : "Waiting for the hub. Check your connection.", 12);
+        if (state == null) label(connected ? "No messages yet" : "Waiting for the hub. Check your connection.", 12).setTextColor(WatchUi.muted());
         for (int i = 0; i < array("agents").length(); i++) {
             JSONObject agent = array("agents").optJSONObject(i);
             if (agent != null && selected.equals(agent.optString("id")) && ("blocked".equals(agent.optString("status")) || "limited".equals(agent.optString("status")))) {
-                label(agent.optString("line", "Agent needs attention"), 12).setTextColor(0xffffc58f);
+                label(agent.optString("line", "Agent needs attention"), 12).setTextColor(WatchUi.warning());
             }
         }
         JSONArray approvals = array("approvals");
         for (int i = 0; i < approvals.length(); i++) {
             JSONObject a = approvals.optJSONObject(i);
             if (a == null || !selected.equals(a.optString("session"))) continue;
-            label(a.optString("tool") + "\n" + a.optString("description") + "\n" + a.optString("preview"), 14);
+            WatchUi.space(content, 6);
+            label("Needs approval", 12).setTextColor(WatchUi.warning());
+            WatchUi.card(content, (a.optString("tool") + "\n" + a.optString("description") + "\n" + a.optString("preview")).trim(),
+                WatchUi.surface(), Gravity.CENTER);
             String id = a.optString("requestId");
-            Button allow = button("Hold to allow", () -> notice("Hold to approve this request"));
+            Button allow = primary("Hold to allow", () -> notice("Hold to approve this request"));
             allow.setEnabled(!sending);
             allow.setOnLongClickListener(v -> { verdict(id, true); return true; });
             button("Deny", () -> verdict(id, false)).setEnabled(!sending);
         }
         String latest = "";
+        boolean messages = false;
         JSONArray lines = array("spoken");
         for (int i = lines.length() - 1; i >= 0; i--) {
             JSONObject line = lines.optJSONObject(i);
             if (line == null || !selected.equals(line.optString("agent", "noodle"))) continue;
             String text = line.optString("text");
-            TextView message = label(("echo".equals(line.optString("kind")) ? "You: " : "") + text, 14);
-            message.setGravity(Gravity.START);
-            message.setTextColor("echo".equals(line.optString("kind")) ? ("squint".equals(BuildConfig.FIXED_AGENT) ? 0xffd0ae8f : 0xffb5c3c5) : ProviderHome.ink());
+            boolean own = "echo".equals(line.optString("kind"));
+            if (!messages) { messages = true; WatchUi.space(content, 8); label("Messages, newest first", 11).setTextColor(WatchUi.muted()); }
+            // The owner's messages are on the right. The agent's messages are on the left.
+            TextView message = WatchUi.card(content, text, own ? WatchUi.ownBubble() : WatchUi.surface(), own ? Gravity.END : Gravity.START);
+            message.setContentDescription((own ? "You: " : name + ": ") + text);
             if (latest.isEmpty() && !"echo".equals(line.optString("kind"))) latest = text;
             if (line.optJSONObject("card") != null) {
                 WatchCard card = new WatchCard(this); content.addView(card); card.show(line.optJSONObject("card"));
@@ -360,6 +339,7 @@ public final class MainActivity extends Activity {
             }
         }
         String reply = latest;
+        WatchUi.space(content, 6);
         if (!reply.isEmpty()) button("Read reply aloud", () -> {
             if (speechReady) speech.speak(reply, TextToSpeech.QUEUE_FLUSH, null, "reply");
             else notice("Speech output is unavailable");
@@ -422,7 +402,11 @@ public final class MainActivity extends Activity {
         if (!BuildConfig.FIXED_AGENT.isEmpty()) {
             if (taskCard != null) {
                 TaskSummary task = TaskSummary.from(state, selected, connected);
-                taskCard.setText(task.status + "\n" + task.title);
+                android.text.SpannableString words = new android.text.SpannableString(task.status + "\n" + task.title);
+                words.setSpan(new android.text.style.ForegroundColorSpan(statusColor(task.status)), 0, task.status.length(), 0);
+                words.setSpan(new android.text.style.RelativeSizeSpan(.84f), 0, task.status.length(), 0);
+                taskCard.setText(words);
+                MigosTileService.remember(this, task.status, task.title);
                 taskCard.setContentDescription("Open current task. " + task.status + ". " + task.title);
             }
             String status = connected ? "Connected" : "Offline";
@@ -437,14 +421,22 @@ public final class MainActivity extends Activity {
                     if (approval != null && selected.equals(approval.optString("session"))) status = "Needs approval";
                 }
             }
-            connectionMark.setText((connected ? "●  " : "○  ") + status);
-            connectionMark.setTextColor("squint".equals(BuildConfig.FIXED_AGENT) ? 0xffcfb492 : 0xffb9bbb6);
+            android.text.SpannableString mark = new android.text.SpannableString((connected ? "●  " : "○  ") + status);
+            mark.setSpan(new android.text.style.ForegroundColorSpan(connected ? statusColor(status) : WatchUi.muted()), 0, 1, 0);
+            connectionMark.setText(mark);
+            connectionMark.setTextColor(WatchUi.muted());
             connectionMark.setContentDescription(status + ("Needs approval".equals(status) ? ". Open conversation history to review." : ""));
             return;
         }
         connectionMark.setText(connected ? "✓" : "·");
-        connectionMark.setTextColor(connected ? 0xff80e1d6 : 0xffffc58f);
+        connectionMark.setTextColor(connected ? WatchUi.signal() : WatchUi.warning());
         connectionMark.setContentDescription(connected ? "Connected" : "Reconnecting");
+    }
+    /** Amber marks a state that needs the owner. Other states use the provider's signal colour. */
+    static int statusColor(String status) {
+        if (status.startsWith("Needs") || status.startsWith("Waiting")) return WatchUi.warning();
+        if (status.startsWith("Offline") || status.startsWith("Agent offline") || status.startsWith("Checking") || status.startsWith("No task")) return WatchUi.muted();
+        return WatchUi.signal();
     }
     static String providerStatus(String status) {
         return switch (status) {
