@@ -5,7 +5,7 @@ android {
         applicationId 'club.chums.wear.grokbot'
         buildConfigField 'String', 'FIXED_AGENT', '\"stretch\"'
         buildConfigField 'String', 'APP_TITLE', '\"Grokbot\"'
-        manifestPlaceholders = [appLabel: 'Grokbot', appIcon: '@drawable/provider_icon']
+        manifestPlaceholders = [appLabel: 'Grokbot', appIcon: '@mipmap/provider_launcher']
     }
     sourceSets {
         main {

@@ -16,6 +16,11 @@ public final class MemoryInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            if (options != null && "true".equals(options.getString("task_summary"))) {
+                TaskSummaryChecks.run();
+                result.putString("stream", "PASS: task routing, approvals, idle, missing data and offline status.\n");
+                finish(-1, result); return;
+            }
             if (options != null && "true".equals(options.getString("live_content"))) {
                 LiveContentChecks.run(this);
                 result.putString("stream", "PASS: live progress/cards, cancellation, native layout, image limits.\n");

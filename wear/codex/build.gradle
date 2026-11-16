@@ -5,7 +5,7 @@ android {
         applicationId 'club.chums.wear.codex'
         buildConfigField 'String', 'FIXED_AGENT', '\"noodle\"'
         buildConfigField 'String', 'APP_TITLE', '\"Codex Watch\"'
-        manifestPlaceholders = [appLabel: 'Codex Watch', appIcon: '@drawable/provider_icon']
+        manifestPlaceholders = [appLabel: 'Codex Watch', appIcon: '@mipmap/provider_launcher']
     }
     sourceSets {
         main {

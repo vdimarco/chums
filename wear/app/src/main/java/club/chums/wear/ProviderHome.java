@@ -35,6 +35,7 @@ final class ProviderHome extends FrameLayout {
     private final Paint paint = new Paint(3);
     private final ArrayList<float[]> boxes = new ArrayList<>();
     final TextView status;
+    final TextView task;
 
     ProviderHome(Context context, String agent, Runnable talk, Runnable history, Runnable settings) {
         super(context); setWillNotDraw(false);
@@ -47,24 +48,26 @@ final class ProviderHome extends FrameLayout {
             text("codex", 20, 0xfffffaf0, "sans-serif-medium", 55, 23, 98, 28);
             status = text("", 9, 0xffb6b4a9, "sans-serif", 60, 203, 88, 14);
             icon(R.drawable.ic_provider_settings, "Connection settings", 0xffd0cfc8, Color.TRANSPARENT, 24, 153, 24, 48, 48, settings);
-            action(">_  New task", "Talk to Codex", 13, 0xff171713, 0xfffff2d5, 27, 23, 147, 112, 48, talk);
-            icon(R.drawable.ic_provider_history, "Conversation history", 0xfff4eddd, 0xff292a29, 26, 143, 147, 48, 48, history);
+            action(">_  New task", "Talk to Codex", 13, 0xff171713, 0xfffff2d5, 27, 23, 154, 112, 48, talk);
+            icon(R.drawable.ic_provider_history, "Conversation history", 0xfff4eddd, 0xff292a29, 26, 143, 154, 48, 48, history);
         } else if ("squint".equals(agent)) {
             text("Claude", 21, 0xffffeed6, "serif", 21, 46, 87, 29);
             status = text("", 9, 0xffc3a88b, "sans-serif", 23, 79, 80, 14);
-            TextView invitation = text("Start a\nconversation", 15, 0xffffeacf, "serif", 20, 108, 95, 37);
-            invitation.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
             icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe0c5a8, Color.TRANSPARENT, 24, 91, 9, 48, 48, settings);
-            icon(R.drawable.ic_voice_mic, "Talk to Claude", 0xff251308, 0xffffedcd, 30, 132, 147, 56, 56, talk);
+            icon(R.drawable.ic_voice_mic, "Talk to Claude", 0xff251308, 0xffffedcd, 30, 132, 154, 56, 56, talk);
             action("History", "Conversation history", 12, 0xffffe4c5, 0xaa421d0c, 26, 25, 160, 87, 48, history);
         } else {
             text("grok", 25, Color.WHITE, "sans-serif-black", 65, 23, 78, 32);
             status = text("", 9, 0xffa5a5a5, "sans-serif", 61, 57, 86, 14);
-            icon(R.drawable.ic_voice_mic, "Talk to Grok", Color.WHITE, 0xff090909, 30, 139, 126, 56, 56, talk);
-            text("Ask Grok", 12, Color.WHITE, "sans-serif-medium", 63, 187, 80, 18);
+            icon(R.drawable.ic_voice_mic, "Talk to Grok", Color.WHITE, 0xff090909, 30, 139, 154, 56, 56, talk);
             icon(R.drawable.ic_provider_history, "Conversation history", 0xffe9e9e7, 0xff181919, 26, 23, 166, 48, 48, history);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe9e9e7, 0xff181919, 26, 20, 41, 48, 48, settings);
+            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe9e9e7, 0xff181919, 26, 20, 33, 48, 48, settings);
         }
+        task = action("Checking task status", "Open current task", 12, ink(),
+            "squint".equals(agent) ? 0xee32180e : 0xee17191a, 14, 24, 94, 160, 48, history);
+        task.setMaxLines(2);
+        task.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        task.setPadding(12, 0, 12, 0);
     }
 
     private TextView text(String value, int size, int color, String font, int x, int y, int w, int h) {
@@ -74,7 +77,7 @@ final class ProviderHome extends FrameLayout {
         view.setTypeface(Typeface.create(font, Typeface.NORMAL));
         addView(view); boxes.add(new float[]{x, y, w, h}); return view;
     }
-    private void action(String value, String description, int size, int ink, int fill, int radius,
+    private TextView action(String value, String description, int size, int ink, int fill, int radius,
                         int x, int y, int w, int h, Runnable run) {
         TextView view = text(value, size, ink, "sans-serif-medium", x, y, w, h);
         view.setContentDescription(description); view.setFocusable(true);
@@ -90,6 +93,7 @@ final class ProviderHome extends FrameLayout {
         view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x337f9ba3),
             new android.graphics.drawable.InsetDrawable(shape, 0, inset, 0, inset), null));
         view.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
+        return view;
     }
     private void icon(int resource, String description, int ink, int fill, int radius,
                       int x, int y, int w, int h, Runnable run) {

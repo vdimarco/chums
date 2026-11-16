@@ -28,7 +28,7 @@ public final class MainActivity extends Activity {
     private JSONObject state;
     private LinearLayout content;
     private ScrollView scroll;
-    private TextView heading, connectionMark, companionCaption;
+    private TextView heading, connectionMark, companionCaption, taskCard;
     private String selected = "";
     private boolean connected;
     private int generation;
@@ -118,7 +118,7 @@ public final class MainActivity extends Activity {
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void page(String title) {
-        main.removeCallbacks(cycleMigo); companion = null; companionCaption = null;
+        main.removeCallbacks(cycleMigo); companion = null; companionCaption = null; taskCard = null;
         if (pet != null) { pet.stop(); pet = null; }
         scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -198,15 +198,18 @@ public final class MainActivity extends Activity {
                 main.post(() -> {
                     if (!active || run != generation) return;
                     boolean changed = state == null || next.optLong("rev") != state.optLong("rev");
+                    boolean wasConnected = connected;
                     state = next; connected = true;
-                    if (changed && history) showConversation();
+                    if ((changed || !wasConnected) && history) showConversation();
                     if (!history) updateHeading();
                     main.postDelayed(() -> poll(run, next.optLong("rev")), 200);
                 });
             } catch (Exception e) {
                 main.post(() -> {
                     if (!active || run != generation) return;
+                    boolean wasConnected = connected;
                     connected = false;
+                    if (history && wasConnected) showConversation();
                     if (!history) updateHeading();
                     main.postDelayed(() -> poll(run, 0), 5000);
                 });
@@ -284,6 +287,7 @@ public final class MainActivity extends Activity {
         if (getResources().getConfiguration().fontScale >= 1.3f) {
             page(BuildConfig.APP_TITLE);
             connectionMark = label("", 14);
+            taskCard = button("Current task", this::showConversation);
             button("Talk to " + AgentVoice.name(selected), this::startLive);
             button("Conversation history", this::showConversation);
             button("Connection settings", this::showSettings);
@@ -296,6 +300,7 @@ public final class MainActivity extends Activity {
         ProviderHome home = new ProviderHome(this, BuildConfig.FIXED_AGENT,
             this::startLive, this::showConversation, this::showSettings);
         connectionMark = home.status;
+        taskCard = home.task;
         setContentView(home); updateHeading();
     }
 
@@ -308,6 +313,12 @@ public final class MainActivity extends Activity {
             if (agent != null && selected.equals(agent.optString("id"))) name = agent.optString("name", selected);
         }
         page(name);
+        if (!BuildConfig.FIXED_AGENT.isEmpty()) {
+            TaskSummary task = TaskSummary.from(state, selected, connected);
+            label(task.status, 16).setTextColor(ProviderHome.accent());
+            label(task.title, 14);
+            if (!task.detail.isBlank() && !task.detail.equals(task.title)) label(task.detail, 13);
+        }
         button("Live voice", this::startLive);
         button("Type a message", this::composeMessage).setEnabled(!sending);
         button("Agent workspace", () -> startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected)));
@@ -409,6 +420,11 @@ public final class MainActivity extends Activity {
     }
     private void updateHeading() {
         if (!BuildConfig.FIXED_AGENT.isEmpty()) {
+            if (taskCard != null) {
+                TaskSummary task = TaskSummary.from(state, selected, connected);
+                taskCard.setText(task.status + "\n" + task.title);
+                taskCard.setContentDescription("Open current task. " + task.status + ". " + task.title);
+            }
             String status = connected ? "Connected" : "Offline";
             if (connected) {
                 for (int i = 0; i < array("agents").length(); i++) {

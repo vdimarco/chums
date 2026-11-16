@@ -5,7 +5,7 @@ android {
         applicationId 'club.chums.wear.claude'
         buildConfigField 'String', 'FIXED_AGENT', '\"squint\"'
         buildConfigField 'String', 'APP_TITLE', '\"Claude Watch\"'
-        manifestPlaceholders = [appLabel: 'Claude Watch', appIcon: '@drawable/provider_icon']
+        manifestPlaceholders = [appLabel: 'Claude Watch', appIcon: '@mipmap/provider_launcher']
     }
     sourceSets {
         main {
