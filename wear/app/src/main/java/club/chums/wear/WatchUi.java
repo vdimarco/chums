@@ -73,19 +73,25 @@ final class WatchUi {
 
     /** A scrolling column that keeps its first and last rows inside a round screen. */
     static LinearLayout page(Activity activity) {
+        LinearLayout content = column(activity);
+        activity.setContentView((View) content.getParent());
+        ((View) content.getParent()).requestFocus();
+        return content;
+    }
+    /** The column of a page. Its parent is the scroll view to show. */
+    static LinearLayout column(Context activity) {
         ScrollView scroll = new ScrollView(activity);
         scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
         scroll.setBackgroundColor(background());
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL); content.setGravity(Gravity.CENTER_HORIZONTAL);
         content.setPadding(dp(activity, 22), dp(activity, 24), dp(activity, 22), dp(activity, 44));
-        scroll.addView(content); activity.setContentView(scroll);
+        scroll.addView(content);
         scroll.setOnGenericMotionListener((view, event) -> {
             if (event.getAction() != MotionEvent.ACTION_SCROLL) return false;
             scroll.smoothScrollBy(0, Math.round(-event.getAxisValue(MotionEvent.AXIS_SCROLL) * dp(activity, 36)));
             return true;
         });
-        scroll.requestFocus();
         return content;
     }
     static TextView title(LinearLayout parent, String words) {

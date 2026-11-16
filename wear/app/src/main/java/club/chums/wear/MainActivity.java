@@ -35,6 +35,10 @@ public final class MainActivity extends Activity {
     private boolean active, settings, sending, speechReady, history;
     private TextToSpeech speech;
     private PetDrawable pet;
+    private ProviderPager pager;
+    private LinearLayout jobsPage, historyPage;
+    private String sideShown = "";
+    private int sidePage;
     private ImageView companion;
     private String migo = "noodle";
     private static final String[] MIGOS = {"noodle", "squint", "ray", "stretch"};
@@ -119,6 +123,7 @@ public final class MainActivity extends Activity {
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void page(String title) {
         main.removeCallbacks(cycleMigo); companion = null; companionCaption = null; taskCard = null;
+        pager = null; jobsPage = null; historyPage = null;
         if (pet != null) { pet.stop(); pet = null; }
         content = WatchUi.page(this);
         scroll = (ScrollView) content.getParent();
@@ -273,7 +278,68 @@ public final class MainActivity extends Activity {
             this::startLive, this::showConversation, this::showSettings);
         connectionMark = home.status;
         taskCard = home.task;
-        setContentView(home); updateHeading();
+        // Swipe sideways: home, then the running job, then the history.
+        jobsPage = WatchUi.column(this); historyPage = WatchUi.column(this); sideShown = "";
+        pager = new ProviderPager(this, sidePage, page -> sidePage = page,
+            home, (View) jobsPage.getParent(), (View) historyPage.getParent());
+        setContentView(pager); updateHeading();
+    }
+
+    /** Fill the two side pages from the last state. They show the state; the conversation page has the actions. */
+    private void showSidePages() {
+        if (jobsPage == null) return;
+        String shown = (state == null ? -1 : state.optLong("rev")) + ":" + connected;
+        if (shown.equals(sideShown)) return;
+        sideShown = shown;
+        TaskSummary task = TaskSummary.from(state, selected, connected);
+        jobsPage.removeAllViews();
+        WatchUi.title(jobsPage, "Jobs");
+        WatchUi.text(jobsPage, task.status, 12, statusColor(task.status));
+        WatchUi.card(jobsPage, task.detail.isBlank() || task.detail.equals(task.title) ? task.title : task.title + "\n" + task.detail,
+            WatchUi.surface(), Gravity.CENTER).setGravity(Gravity.CENTER);
+        JSONArray sessions = array("sessions");
+        for (int i = 0; i < sessions.length(); i++) {
+            JSONObject session = sessions.optJSONObject(i);
+            int helpers = session != null && selected.equals(session.optString("id")) ? session.optInt("subagents") : 0;
+            if (helpers > 0) WatchUi.text(jobsPage, helpers == 1 ? "1 subagent is running" : helpers + " subagents are running", 12, WatchUi.signal());
+        }
+        JSONArray approvals = array("approvals");
+        for (int i = 0; i < approvals.length(); i++) {
+            JSONObject approval = approvals.optJSONObject(i);
+            if (approval == null || !selected.equals(approval.optString("session"))) continue;
+            WatchUi.text(jobsPage, "Needs approval", 12, WatchUi.warning());
+            WatchUi.card(jobsPage, (approval.optString("tool") + "\n" + approval.optString("description")).trim(), WatchUi.surface(), Gravity.CENTER);
+        }
+        WatchUi.space(jobsPage, 6);
+        WatchUi.text(jobsPage, "Recent activity", 11, WatchUi.muted());
+        JSONArray tools = array("tools"); int activity = 0;
+        for (int i = tools.length() - 1; i >= 0 && activity < 4; i--) {
+            JSONObject tool = tools.optJSONObject(i);
+            if (tool == null || !selected.equals(tool.optString("session"))) continue;
+            WatchUi.card(jobsPage, (tool.optString("tool", tool.optString("type")) + "\n" + tool.optString("text", tool.optString("description", ""))).trim(),
+                WatchUi.surface(), Gravity.CENTER);
+            activity++;
+        }
+        if (activity == 0) WatchUi.text(jobsPage, connected ? "No recent activity" : "Waiting for the hub", 12, WatchUi.muted());
+        WatchUi.space(jobsPage, 6);
+        WatchUi.button(jobsPage, "Open task", false, this::showConversation);
+
+        historyPage.removeAllViews();
+        WatchUi.title(historyPage, "History");
+        WatchUi.text(historyPage, "Newest first", 11, WatchUi.muted());
+        JSONArray lines = array("spoken"); int messages = 0;
+        for (int i = lines.length() - 1; i >= 0 && messages < 12; i--) {
+            JSONObject line = lines.optJSONObject(i);
+            if (line == null || !selected.equals(line.optString("agent", "noodle")) || line.optString("text").isBlank()) continue;
+            boolean own = "echo".equals(line.optString("kind"));
+            TextView message = WatchUi.card(historyPage, line.optString("text"), own ? WatchUi.ownBubble() : WatchUi.surface(), own ? Gravity.END : Gravity.START);
+            message.setMaxLines(6); message.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            message.setContentDescription((own ? "You: " : AgentVoice.name(selected) + ": ") + line.optString("text"));
+            messages++;
+        }
+        if (messages == 0) WatchUi.text(historyPage, connected ? "No messages yet" : "Waiting for the hub", 12, WatchUi.muted());
+        WatchUi.space(historyPage, 6);
+        WatchUi.button(historyPage, "Open conversation", false, this::showConversation);
     }
 
     private void showConversation() {
@@ -350,6 +416,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (history) showHome();
+        else if (pager != null && pager.page() > 0) pager.show(0, true);
         else if (settings && hub != null) { settings = false; showHome(); startPolling(); }
         else super.onBackPressed();
     }
@@ -407,6 +474,7 @@ public final class MainActivity extends Activity {
                 words.setSpan(new android.text.style.RelativeSizeSpan(.84f), 0, task.status.length(), 0);
                 taskCard.setText(words);
                 MigosTileService.remember(this, task.status, task.title);
+                showSidePages();
                 taskCard.setContentDescription("Open current task. " + task.status + ". " + task.title);
             }
             String status = connected ? "Connected" : "Offline";
