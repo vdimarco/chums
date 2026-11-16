@@ -34,9 +34,9 @@ public final class MigosTileService extends TileService {
     static LayoutElementBuilders.Box layout(String packageName, String agent) {
         var content = new LayoutElementBuilders.Column.Builder()
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .addContent(text(BuildConfig.APP_TITLE, 18, 0xff80e1d6))
+            .addContent(text(BuildConfig.APP_TITLE, 18, Skin.NOW.label))
             .addContent(new LayoutElementBuilders.Spacer.Builder().setHeight(dp(12)).build())
-            .addContent(shortcut(packageName, "Live voice", "voice", 0xff80e1d6, 0xff142327)).build();
+            .addContent(shortcut(packageName, "Live voice", "voice", Skin.NOW.accent, Skin.NOW.onAccent)).build();
         return new LayoutElementBuilders.Box.Builder().setWidth(DimensionBuilders.expand()).setHeight(DimensionBuilders.expand())
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER).addContent(content).build();

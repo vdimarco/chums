@@ -1,146 +1,132 @@
 package club.chums.wear;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.*;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
-import android.content.res.ColorStateList;
+import android.os.SystemClock;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.TextView;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import java.util.ArrayList;
 
-/** Native controls over a provider-specific dial, scaled to the round display. */
+/**
+ * The provider dial. The current task is the centre of the screen, one talk button leads the
+ * bottom row, and a bezel ring reports state: a sweeping arc while working, amber when the
+ * agent needs you, dashed when the hub is unreachable.
+ */
 final class ProviderHome extends FrameLayout {
-    static int background() {
-        return switch (BuildConfig.FIXED_AGENT) {
-            case "noodle" -> 0xff101112;
-            case "squint" -> 0xff190b05;
-            case "stretch" -> Color.BLACK;
-            default -> Color.BLACK;
-        };
-    }
-    static int ink() { return "squint".equals(BuildConfig.FIXED_AGENT) ? 0xffffedd5 : Color.WHITE; }
-    static int accent() {
-        return switch (BuildConfig.FIXED_AGENT) {
-            case "noodle" -> 0xfffff2d5;
-            case "squint" -> 0xffcf642f;
-            case "stretch" -> 0xffeeeeec;
-            default -> 0xff80e1d6;
-        };
-    }
-    private final Bitmap artwork;
-    private final Paint paint = new Paint(3);
+    static final int IDLE = 0, WORKING = 1, ATTENTION = 2, OFFLINE = 3;
+    static int background() { return Skin.NOW.bg; }
+    static int ink() { return Skin.NOW.ink; }
+    static int accent() { return Skin.NOW.accent; }
+
+    private final Skin skin = Skin.NOW;
+    private final String agent;
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF oval = new RectF();
     private final ArrayList<float[]> boxes = new ArrayList<>();
+    private Shader glow;
+    private int state = IDLE;
     final TextView status;
     final TextView task;
 
     ProviderHome(Context context, String agent, Runnable talk, Runnable history, Runnable settings) {
-        super(context); setWillNotDraw(false);
-        BitmapFactory.Options options = new BitmapFactory.Options(); options.inSampleSize = 2;
-        try (var stream = context.getAssets().open("providers/" + agent + ".png")) {
-            artwork = BitmapFactory.decodeStream(stream, null, options);
-            if (artwork == null) throw new IllegalStateException("Provider artwork could not be decoded");
-        } catch (java.io.IOException e) { throw new IllegalStateException("Provider artwork is missing", e); }
-        if ("noodle".equals(agent)) {
-            text("codex", 20, 0xfffffaf0, "sans-serif-medium", 55, 23, 98, 28);
-            status = text("", 9, 0xffb6b4a9, "sans-serif", 60, 203, 88, 14);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffd0cfc8, Color.TRANSPARENT, 24, 153, 24, 48, 48, settings);
-            action(">_  New task", "Talk to Codex", 13, 0xff171713, 0xfffff2d5, 27, 23, 154, 112, 48, talk);
-            icon(R.drawable.ic_provider_history, "Conversation history", 0xfff4eddd, 0xff292a29, 26, 143, 154, 48, 48, history);
-        } else if ("squint".equals(agent)) {
-            text("Claude", 21, 0xffffeed6, "serif", 21, 46, 87, 29);
-            status = text("", 9, 0xffc3a88b, "sans-serif", 23, 79, 80, 14);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe0c5a8, Color.TRANSPARENT, 24, 91, 9, 48, 48, settings);
-            icon(R.drawable.ic_voice_mic, "Talk to Claude", 0xff251308, 0xffffedcd, 30, 132, 154, 56, 56, talk);
-            action("History", "Conversation history", 12, 0xffffe4c5, 0xaa421d0c, 26, 25, 160, 87, 48, history);
-        } else {
-            text("grok", 25, Color.WHITE, "sans-serif-black", 65, 23, 78, 32);
-            status = text("", 9, 0xffa5a5a5, "sans-serif", 61, 57, 86, 14);
-            icon(R.drawable.ic_voice_mic, "Talk to Grok", Color.WHITE, 0xff090909, 30, 139, 154, 56, 56, talk);
-            icon(R.drawable.ic_provider_history, "Conversation history", 0xffe9e9e7, 0xff181919, 26, 23, 166, 48, 48, history);
-            icon(R.drawable.ic_provider_settings, "Connection settings", 0xffe9e9e7, 0xff181919, 26, 20, 33, 48, 48, settings);
-        }
-        task = action("Checking task status", "Open current task", 12, ink(),
-            "squint".equals(agent) ? 0xee32180e : 0xee17191a, 14, 24, 94, 160, 48, history);
-        task.setMaxLines(2);
-        task.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        task.setPadding(12, 0, 12, 0);
-    }
+        super(context); setWillNotDraw(false); this.agent = agent;
+        String word = switch (agent) { case "noodle" -> "codex"; case "squint" -> "Claude"; default -> "grok"; };
+        TextView title = Ui.text(context, word, "stretch".equals(agent) ? 21 : "noodle".equals(agent) ? 16 : 19, skin.ink, skin.displayFace());
+        if ("stretch".equals(agent)) title.setLetterSpacing(-.02f);
+        place(title, 54, 16, 120, 28);
+        status = Ui.text(context, "", 10, skin.muted, skin.bodyFace());
+        place(status, 44, 44, 140, 15);
 
-    private TextView text(String value, int size, int color, String font, int x, int y, int w, int h) {
-        TextView view = new TextView(getContext()); view.setText(value); view.setTextSize(size);
-        view.setTextColor(color); view.setGravity(Gravity.CENTER); view.setIncludeFontPadding(false);
-        if (size > 9) view.setAutoSizeTextTypeUniformWithConfiguration(9, size, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
-        view.setTypeface(Typeface.create(font, Typeface.NORMAL));
-        addView(view); boxes.add(new float[]{x, y, w, h}); return view;
-    }
-    private TextView action(String value, String description, int size, int ink, int fill, int radius,
-                        int x, int y, int w, int h, Runnable run) {
-        TextView view = text(value, size, ink, "sans-serif-medium", x, y, w, h);
-        view.setContentDescription(description); view.setFocusable(true);
-        // TextViews retain native focus and accessibility; announce these actions as buttons.
-        view.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+        task = Ui.text(context, "Checking task status", "noodle".equals(agent) ? 12 : 13, skin.ink, skin.bodyFace());
+        task.setGravity(Gravity.START | Gravity.CENTER_VERTICAL); task.setMaxLines(3);
+        task.setEllipsize(TextUtils.TruncateAt.END); task.setLineSpacing(Ui.dp(context, 2), 1f);
+        int side = Ui.dp(context, "stretch".equals(agent) ? 22 : 14);
+        task.setPadding(side, Ui.dp(context, 6), side, Ui.dp(context, 6));
+        task.setBackground(Ui.shape(context, Ui.TONAL, "stretch".equals(agent) ? 37 : skin.card));
+        task.setContentDescription("Open current task"); task.setFocusable(true);
+        // The card keeps its text node for accessibility; announce it as a button.
+        task.setAccessibilityDelegate(new View.AccessibilityDelegate() {
             @Override public void onInitializeAccessibilityNodeInfo(View host, android.view.accessibility.AccessibilityNodeInfo info) {
                 super.onInitializeAccessibilityNodeInfo(host, info); info.setClassName("android.widget.Button");
             }
         });
-        GradientDrawable shape = new GradientDrawable(); shape.setColor(fill);
-        shape.setCornerRadius(radius * getResources().getDisplayMetrics().density);
-        int inset = "History".equals(value) ? Math.round(8 * getResources().getDisplayMetrics().density) : 0;
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x337f9ba3),
-            new android.graphics.drawable.InsetDrawable(shape, 0, inset, 0, inset), null));
-        view.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
-        return view;
+        task.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); history.run(); });
+        place(task, 28, 64, 172, 74);
+
+        place(Ui.icon(context, R.drawable.ic_provider_history, "Conversation history", Ui.TONAL, skin.icon, 14, history), 28, 148, 48, 48);
+        ImageButton mic = Ui.icon(context, R.drawable.ic_voice_mic, "Talk to " + AgentVoice.name(agent), Ui.PRIMARY,
+            30, 16, talk);
+        place(mic, 84, 148, 60, 60);
+        place(Ui.icon(context, R.drawable.ic_provider_settings, "Connection settings", Ui.TONAL, skin.icon, 14, settings), 152, 148, 48, 48);
     }
-    private void icon(int resource, String description, int ink, int fill, int radius,
-                      int x, int y, int w, int h, Runnable run) {
-        ImageButton view = new ImageButton(getContext()); view.setImageResource(resource);
-        view.setImageTintList(ColorStateList.valueOf(ink)); view.setContentDescription(description);
-        int padding = Math.round((resource == R.drawable.ic_voice_mic ? 15 : 17) * getResources().getDisplayMetrics().density);
-        view.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        GradientDrawable shape = new GradientDrawable(); shape.setColor(fill);
-        shape.setCornerRadius(radius * getResources().getDisplayMetrics().density);
-        shape.setStroke(1, fill == Color.TRANSPARENT ? Color.TRANSPARENT : 0x337b7a74);
-        int inset = Math.round((resource == R.drawable.ic_voice_mic ? 0 : 6) * getResources().getDisplayMetrics().density);
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x337f7f7f),
-            new android.graphics.drawable.InsetDrawable(shape, inset), null));
-        view.setPadding(padding, padding, padding, padding);
-        addView(view); boxes.add(new float[]{x,y,w,h});
-        view.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
-    }
+
+    /** Hub and agent state, shown on the bezel ring. */
+    void state(int next) { if (state != next) { state = next; invalidate(); } }
+
+    private void place(View view, int x, int y, int w, int h) { addView(view); boxes.add(new float[]{x, y, w, h}); }
     private int[] bounds(int index, int width, int height) {
         float scale = Math.min(width, height) / 228f;
-        float ox = (width - 208 * scale) / 2, oy = (height - 228 * scale) / 2;
+        float ox = (width - 228 * scale) / 2, oy = (height - 228 * scale) / 2;
         float[] b = boxes.get(index);
         float minimum = getChildAt(index).isClickable() ? 48 * getResources().getDisplayMetrics().density : 0;
-        float w = Math.max(minimum, b[2]*scale), h = Math.max(minimum, b[3]*scale);
-        int x = Math.round(ox + (b[0]+b[2]/2)*scale - w/2);
-        int y = Math.round(oy + (b[1]+b[3]/2)*scale - h/2);
-        return new int[]{x,y,x+Math.round(w),y+Math.round(h)};
+        float w = Math.max(minimum, b[2] * scale), h = Math.max(minimum, b[3] * scale);
+        int x = Math.round(ox + (b[0] + b[2] / 2) * scale - w / 2);
+        int y = Math.round(oy + (b[1] + b[3] / 2) * scale - h / 2);
+        return new int[]{x, y, x + Math.round(w), y + Math.round(h)};
     }
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec), height = MeasureSpec.getSize(heightSpec);
         setMeasuredDimension(width, height);
-        for (int i=0; i<getChildCount(); i++) {
-            int[] b = bounds(i,width,height);
-            getChildAt(i).measure(MeasureSpec.makeMeasureSpec(b[2]-b[0],MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(b[3]-b[1],MeasureSpec.EXACTLY));
+        for (int i = 0; i < getChildCount(); i++) {
+            int[] b = bounds(i, width, height);
+            getChildAt(i).measure(MeasureSpec.makeMeasureSpec(b[2] - b[0], MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(b[3] - b[1], MeasureSpec.EXACTLY));
         }
     }
     @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        for (int i=0; i<getChildCount(); i++) {
-            int[] b = bounds(i,right-left,bottom-top);
-            getChildAt(i).layout(b[0],b[1],b[2],b[3]);
+        for (int i = 0; i < getChildCount(); i++) {
+            int[] b = bounds(i, right - left, bottom - top);
+            getChildAt(i).layout(b[0], b[1], b[2], b[3]);
         }
+    }
+    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        float side = Math.min(w, h);
+        glow = "squint".equals(agent) ? new RadialGradient(w / 2f, h / 2f + side * .58f, side * .6f,
+            (skin.accent & 0x00ffffff) | 0x48000000, skin.accent & 0x00ffffff, Shader.TileMode.CLAMP) : null;
     }
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        canvas.drawColor(Color.BLACK);
-        float side = Math.min(getWidth(), getHeight());
-        float left = (getWidth()-side)/2, top = (getHeight()-side)/2;
-        canvas.drawBitmap(artwork, null, new RectF(left, top, left+side, top+side), paint);
+        canvas.drawColor(skin.bg);
+        float side = Math.min(getWidth(), getHeight()), unit = side / 228f;
+        float cx = getWidth() / 2f, cy = getHeight() / 2f;
+        paint.setPathEffect(null); paint.setShader(null); paint.setStyle(Paint.Style.FILL);
+        if (glow != null) { paint.setShader(glow); canvas.drawCircle(cx, cy, side / 2, paint); paint.setShader(null); }
+        if ("noodle".equals(agent)) {
+            // A faint terminal grid.
+            paint.setColor(0xff232426);
+            float step = 12 * unit, radius = side / 2 - 8 * unit;
+            for (float x = cx % step; x < getWidth(); x += step) for (float y = cy % step; y < getHeight(); y += step)
+                if (Math.hypot(x - cx, y - cy) < radius) canvas.drawCircle(x, y, unit, paint);
+        }
+        float stroke = ("stretch".equals(agent) ? 2f : 3f) * unit, inset = 4 * unit + stroke / 2;
+        oval.set(cx - side / 2 + inset, cy - side / 2 + inset, cx + side / 2 - inset, cy + side / 2 - inset);
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(stroke);
+        paint.setStrokeCap("noodle".equals(agent) ? Paint.Cap.BUTT : Paint.Cap.ROUND);
+        paint.setColor(state == ATTENTION ? Skin.WARN : skin.ring);
+        if (state == OFFLINE) paint.setPathEffect(new DashPathEffect(new float[]{2 * unit, 7 * unit}, 0));
+        canvas.drawOval(oval, paint);
+        paint.setPathEffect(null);
+        if (state == WORKING) {
+            boolean moving = ValueAnimator.areAnimatorsEnabled();
+            float angle = moving ? (SystemClock.uptimeMillis() % 2400) * 360f / 2400f : 0;
+            paint.setColor("stretch".equals(agent) ? skin.ink : skin.label);
+            canvas.drawArc(oval, angle - 90, 80, false, paint);
+            if (moving && isShown()) postInvalidateOnAnimation();
+        }
     }
 }

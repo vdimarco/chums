@@ -22,28 +22,41 @@ public final class WorkspaceActivity extends Activity {
             AgentVoice.name(agent);
             hub = new HubConnection(prefs.getString("url", ""), prefs.getString("token", ""), BuildConfig.DEBUG);
             String artifact = getIntent().getStringExtra("artifact");
-            if (artifact != null) showArtifact(new JSONObject(artifact)); else showWorkspace();
-        } catch (Exception e) { page("Unavailable"); text("Connect the app to your hub first."); button("Back", this::finish); }
+            if (artifact != null) showArtifact(new JSONObject(artifact));
+            else if (getIntent().getBooleanExtra("chats", false)) showChats(); else showWorkspace();
+        } catch (Exception e) { page("Unavailable"); note("Connect the app to your hub first."); button("Back", Ui.OUTLINE, this::finish); }
     }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private void page(String title) {
         generation++;
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(26), dp(28), dp(26), dp(36)); content.setBackgroundColor(ProviderHome.background());
-        scroll.addView(content); setContentView(scroll); text(title).setTextSize(19);
+        content.setPadding(dp(22), dp(22), dp(22), dp(40)); scroll.setBackgroundColor(Skin.NOW.bg);
+        scroll.addView(content); setContentView(scroll);
+        TextView heading = text(title); heading.setTextSize(18); heading.setTypeface(Skin.NOW.displayFace());
         scroll.setOnGenericMotionListener((v, event) -> {
             if (event.getAction() != android.view.MotionEvent.ACTION_SCROLL) return false;
             scroll.smoothScrollBy(0, Math.round(-event.getAxisValue(android.view.MotionEvent.AXIS_SCROLL) * dp(36))); return true;
         }); scroll.requestFocus();
     }
     private TextView text(String words) {
-        TextView view = new TextView(this); view.setText(words); view.setTextSize(14); view.setTextColor(ProviderHome.ink());
-        view.setGravity(Gravity.CENTER); view.setPadding(0, dp(6), 0, dp(6)); content.addView(view); return view;
+        TextView view = Ui.text(this, words, 13, Skin.NOW.ink, Skin.NOW.bodyFace());
+        view.setLineSpacing(dp(2), 1f); view.setPadding(0, dp(5), 0, dp(5)); content.addView(view); return view;
     }
-    private Button button(String words, Runnable action) {
-        Button view = new Button(this); view.setText(words); view.setAllCaps(false); view.setMinHeight(dp(48));
-        content.addView(view, new LinearLayout.LayoutParams(-1, -2)); view.setOnClickListener(v -> action.run()); return view;
+    private TextView note(String words) { TextView view = text(words); view.setTextSize(12); view.setTextColor(Skin.NOW.muted); return view; }
+    /** A labelled block of detail on its own surface. */
+    private void panel(String label, String words) {
+        TextView view = Ui.text(this, Ui.labelled(label, Skin.NOW.label, words, false), 13, Skin.NOW.ink, Skin.NOW.bodyFace());
+        view.setGravity(Gravity.START); view.setLineSpacing(dp(2), 1f); view.setPadding(dp(14), dp(10), dp(14), dp(10));
+        view.setBackground(Ui.panel(this, Skin.NOW.surface, Skin.NOW.outlined ? Skin.NOW.line : 0, Skin.NOW.card));
+        LinearLayout.LayoutParams around = new LinearLayout.LayoutParams(-1, -2); around.topMargin = dp(8);
+        content.addView(view, around);
+    }
+    private Button button(String words, Runnable action) { return button(words, Ui.TONAL, action); }
+    private Button button(String words, int kind, Runnable action) {
+        Button view = Ui.pill(this, words, kind, action);
+        LinearLayout.LayoutParams around = new LinearLayout.LayoutParams(-1, -2); around.topMargin = dp(6);
+        content.addView(view, around); return view;
     }
     private interface Result { void show(JSONObject value) throws Exception; }
     private void load(String path, Result result) {
@@ -62,39 +75,91 @@ public final class WorkspaceActivity extends Activity {
     }
     private void showWorkspace() {
         page(AgentVoice.name(agent));
-        text("Current agent session");
+        note("Current agent session");
         button("Models", this::showModels);
         button("Background alerts", this::showAlerts);
-        button("Refresh", this::showWorkspace);
-        button("Back", this::finish);
+        button("Refresh", Ui.OUTLINE, this::showWorkspace);
+        button("Back", Ui.OUTLINE, this::finish);
         load("/v1/state?device=watch", state -> {
             JSONArray agents = state.optJSONArray("agents");
             if (agents != null) for (int i = 0; i < agents.length(); i++) {
                 JSONObject item = agents.getJSONObject(i);
-                if (agent.equals(item.optString("id"))) text("Runtime: " + item.optString("runtime") + "\nModel: " + item.optString("model", "Default") + "\n" + item.optString("status") + "\n" + item.optString("line", ""));
+                if (agent.equals(item.optString("id"))) panel("Session", ("Runtime: " + item.optString("runtime") + "\nModel: " + item.optString("model", "Default") + "\n" + item.optString("status") + "\n" + item.optString("line", "")).trim());
             }
             JSONArray tools = state.optJSONArray("tools"); int shown = 0;
             if (tools != null) for (int i = tools.length() - 1; i >= 0; i--) {
                 JSONObject tool = tools.getJSONObject(i);
                 if (!agent.equals(tool.optString("session"))) continue;
-                text(tool.optString("tool", tool.optString("type")) + "\n" + tool.optString("text", tool.optString("description", ""))); shown++;
+                panel(tool.optString("tool", tool.optString("type")), tool.optString("text", tool.optString("description", ""))); shown++;
             }
-            if (shown == 0) text("No recent tool activity.");
+            if (shown == 0) note("No recent tool activity.");
         });
+    }
+    /** Chats this provider has had on the hub's computer; the watch only reads them. */
+    private void showChats() {
+        page("Recent chats"); note("On your computer"); int request = generation;
+        worker.execute(() -> {
+            JSONArray chats = null;
+            try { chats = new JSONObject(hub.request("/v1/chats?agent=" + agent, null)).optJSONArray("chats"); } catch (Exception ignored) { }
+            final JSONArray found = chats;
+            runOnUiThread(() -> {
+                if (isDestroyed() || generation != request) return;
+                if (found == null) note("This hub cannot show chats from your computer. Connect the app to the hub running there.");
+                else if (found.length() == 0) note("No " + AgentVoice.name(agent) + " chats found on your computer.");
+                else for (int i = 0; i < found.length(); i++) {
+                    JSONObject chat = found.optJSONObject(i);
+                    if (chat == null) continue;
+                    String title = chat.optString("title"), meta = (ago(chat.optLong("at")) + " · " + chat.optString("project")).replaceAll(" · $", "");
+                    String brief = title.replaceAll("https?://(www\\.)?", "");   // a link wraps badly on a round screen
+                    String shown = brief.length() > 40 ? brief.substring(0, 39).trim() + "…" : brief;   // leaves the last line for where and when
+                    android.text.SpannableString words = new android.text.SpannableString(shown + "\n" + meta);
+                    words.setSpan(new android.text.style.ForegroundColorSpan(Skin.NOW.muted), shown.length(), words.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    words.setSpan(new android.text.style.RelativeSizeSpan(.8f), shown.length(), words.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    Button row = button("", () -> showChat(chat.optString("id"), title));
+                    row.setText(words); row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL); row.setMaxLines(3);
+                    row.setEllipsize(android.text.TextUtils.TruncateAt.END); row.setTextSize(13);
+                    row.setContentDescription(title + ". " + meta);
+                }
+                button("Back", Ui.OUTLINE, this::finish);
+            });
+        });
+    }
+    private void showChat(String id, String title) {
+        page(AgentVoice.name(agent)); note(title).setMaxLines(3); int request = generation;
+        worker.execute(() -> {
+            JSONArray messages = null;
+            try { messages = new JSONObject(hub.request("/v1/chats/" + id + "?agent=" + agent, null)).optJSONArray("messages"); } catch (Exception ignored) { }
+            final JSONArray found = messages;
+            runOnUiThread(() -> {
+                if (isDestroyed() || generation != request) return;
+                if (found == null) note("Could not load this chat. Try again.");
+                else if (found.length() == 0) note("No messages to show.");
+                else for (int i = 0; i < found.length(); i++) {
+                    JSONObject message = found.optJSONObject(i);
+                    if (message != null) Ui.bubble(this, content, message.optString("text"), "user".equals(message.optString("role")));
+                }
+                Ui.spacer(this, content, 8);
+                button("Back", Ui.OUTLINE, this::showChats);
+            });
+        });
+    }
+    static String ago(long at) {
+        long minutes = Math.max(0, (System.currentTimeMillis() - at) / 60000);
+        return minutes < 1 ? "now" : minutes < 60 ? minutes + "m ago" : minutes < 1440 ? minutes / 60 + "h ago" : minutes / 1440 + "d ago";
     }
     private void showAlerts() {
         page("Background alerts");
         var prefs = getSharedPreferences("hub", MODE_PRIVATE);
         boolean enabled = prefs.getBoolean("alerts", false);
-        text(enabled ? "Background checks enabled" : "Background checks disabled");
-        text("Checks about every 15 minutes when Android permits. Alerts can be delayed while asleep or offline. No message content appears on the lock screen.");
-        button(enabled ? "Disable alerts" : "Enable alerts", () -> {
+        text(enabled ? "Background checks enabled" : "Background checks disabled").setTextColor(enabled ? Skin.NOW.label : Skin.NOW.muted);
+        note("Checks about every 15 minutes when Android permits. Alerts can be delayed while asleep or offline. No message content appears on the lock screen.");
+        button(enabled ? "Disable alerts" : "Enable alerts", enabled ? Ui.TONAL : Ui.PRIMARY, () -> {
             if (!enabled && android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 41); return;
             }
             toggleAlerts(!enabled);
         });
-        button("Back", this::showWorkspace);
+        button("Back", Ui.OUTLINE, this::showWorkspace);
     }
     private void toggleAlerts(boolean enabled) {
         if (enabled) {
@@ -115,7 +180,7 @@ public final class WorkspaceActivity extends Activity {
         if (request == 41 && results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) toggleAlerts(true);
     }
     private void showModels() {
-        page("Models"); button("Back", this::showWorkspace);
+        page("Models"); button("Back", Ui.OUTLINE, this::showWorkspace);
         load("/v1/state?device=watch", state -> {
             JSONArray agents = state.optJSONArray("agents"); String runtime = "";
             if (agents != null) for (int i = 0; i < agents.length(); i++) {
@@ -150,10 +215,10 @@ public final class WorkspaceActivity extends Activity {
         });
     }
     private void showArtifact(JSONObject artifact) {
-        page(artifact.optString("title", "Attachment")); button("Back", this::finish);
+        page(artifact.optString("title", "Attachment")); button("Back", Ui.OUTLINE, this::finish);
         String id = artifact.optString("id");
         if (!validArtifactId(id)) { text("Invalid attachment"); return; }
-        TextView status = text("Loading preview…"); int request = generation;
+        TextView status = note("Loading preview…"); int request = generation;
         worker.execute(() -> {
             try {
                 byte[] bytes = hub.requestBytes("/v1/artifact/" + id + "/full", null);

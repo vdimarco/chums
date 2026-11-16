@@ -47,42 +47,50 @@ public final class LiveVoiceActivity extends Activity {
     private ImageButton mute;
     private PetDrawable pet;
     private WatchCard card;
-    private ImageView companion;
+    private android.view.View companion;
+    private VoiceOrb orb;
     private String agent;
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true); scroll.setBackgroundColor(ProviderHome.background());
+        scroll.setFillViewport(true); scroll.setBackgroundColor(Skin.NOW.bg);
         LinearLayout column = new LinearLayout(this); column.setOrientation(LinearLayout.VERTICAL);
-        column.setGravity(Gravity.CENTER); column.setPadding(dp(22), dp(2), dp(22), dp(2));
+        column.setGravity(Gravity.CENTER); column.setPadding(dp(22), dp(4), dp(22), dp(4));
         scroll.addView(column);
         setContentView(scroll);
         agent = getIntent().getStringExtra("migo");
         if (agent == null) agent = getSharedPreferences("hub", MODE_PRIVATE).getString("agent", "noodle");
         agent = AgentVoice.forApp(agent);
         try { AgentVoice.name(agent); } catch (IllegalArgumentException ignored) { agent = "noodle"; }
-        text(column, AgentVoice.name(agent) + " · LIVE", 11).setTextColor(ProviderHome.accent());
-        status = text(column, "Ready to talk", 16);
-        companion = new ImageView(this);
+        Skin skin = Skin.NOW;
+        String live = AgentVoice.name(agent) + " · live";
+        TextView header = text(column, "monospace".equals(skin.body) ? live.toLowerCase(java.util.Locale.ROOT) : live.toUpperCase(java.util.Locale.ROOT), 10);
+        header.setTextColor(skin.label); header.setTypeface(skin.strongFace()); header.setLetterSpacing(.1f);
         pet = new PetDrawable(this, agent, "idle");
-        if (BuildConfig.FIXED_AGENT.isEmpty()) companion.setImageDrawable(pet);
-        else companion.setImageResource(getApplicationInfo().icon);
-        companion.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int height = getResources().getDisplayMetrics().heightPixels;
+        if (BuildConfig.FIXED_AGENT.isEmpty()) {
+            ImageView image = new ImageView(this); image.setImageDrawable(pet);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER); companion = image;
+            column.addView(companion, new LinearLayout.LayoutParams(-1, dp(64)));
+        } else {
+            // The indicator takes whatever height the words and controls leave on this watch.
+            orb = new VoiceOrb(this); companion = orb;
+            column.addView(companion, new LinearLayout.LayoutParams(-1, Math.max(dp(52), Math.min(dp(92), height - dp(146)))));
+        }
         companion.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        column.addView(companion, new LinearLayout.LayoutParams(-1, dp(64)));
+        status = text(column, "Ready to talk", 16); status.setTypeface(skin.displayFace());
+        status.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
         card = new WatchCard(this); column.addView(card, new LinearLayout.LayoutParams(-1, -2));
         transcript = text(column, "Speak naturally. You can interrupt.", 11); transcript.setMaxLines(2);
-        transcript.setPadding(dp(10), 0, dp(10), 0);
-        GradientDrawable bubble = new GradientDrawable(); bubble.setColor("squint".equals(BuildConfig.FIXED_AGENT) ? 0xff3c2117 : 0xff1d2229); bubble.setCornerRadius(dp(16));
-        transcript.setBackground(bubble);
+        transcript.setTextColor(skin.muted); transcript.setPadding(dp(10), 0, dp(10), 0);
         transcript.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(30)));
         LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER);
         column.addView(controls, new LinearLayout.LayoutParams(-1, dp(48)));
-        action(controls, R.drawable.ic_voice_end, "End call and go back", 0xffff89b1, () -> { stop(); finish(); });
-        mute = action(controls, R.drawable.ic_voice_play, "Start live voice call", 0xff80e1d6, this::startCall);
+        action(controls, R.drawable.ic_voice_end, "End call and go back", Ui.DANGER, () -> { stop(); finish(); });
+        mute = action(controls, R.drawable.ic_voice_play, "Start live voice call", Ui.PRIMARY, this::startCall);
         memoryStatus = text(column, "Transcripts sync automatically", 9);
-        memoryStatus.setTextColor(0xff8e9b9f);
+        memoryStatus.setTextColor(skin.muted);
         if (getIntent().getBooleanExtra("start_call", false)) startCall();
     }
     private void startCall() {
@@ -93,20 +101,16 @@ public final class LiveVoiceActivity extends Activity {
     }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private TextView text(LinearLayout parent, String value, int size) {
-        TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(ProviderHome.ink());
+        TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(Skin.NOW.ink); t.setTypeface(Skin.NOW.bodyFace());
         t.setGravity(Gravity.CENTER); t.setPadding(0, dp(2), 0, dp(2)); parent.addView(t); return t;
     }
-    private ImageButton action(LinearLayout parent, int icon, String description, int color, Runnable run) {
-        ImageButton button = new ImageButton(this); button.setImageResource(icon);
-        button.setImageTintList(android.content.res.ColorStateList.valueOf(0xff142327));
-        button.setContentDescription(description); button.setPadding(dp(13), dp(13), dp(13), dp(13));
-        GradientDrawable shape = new GradientDrawable(); shape.setColor(color); shape.setShape(GradientDrawable.OVAL);
-        button.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x44ffffff), shape, null));
+    private ImageButton action(LinearLayout parent, int icon, String description, int kind, Runnable run) {
+        ImageButton button = Ui.icon(this, icon, description, kind, Skin.NOW.icon, 13, run);
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(48), dp(48));
-        size.setMargins(dp(10), 0, dp(10), 0); parent.addView(button, size);
-        button.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
+        size.setMargins(dp(8), 0, dp(8), 0); parent.addView(button, size);
         return button;
     }
+    private void pose(String state) { pet.pose(state); if (orb != null) orb.mode(state); }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] grants) {
         super.onRequestPermissionsResult(request, permissions, grants);
         if (request != 7 || stopped) return;
@@ -116,7 +120,7 @@ public final class LiveVoiceActivity extends Activity {
     private void connect() {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         status.setText("Connecting…");
-        pet.pose("connecting"); pet.start();
+        pose("connecting"); pet.start();
         workers.execute(() -> {
             try {
                 var prefs = getSharedPreferences("hub", MODE_PRIVATE);
@@ -184,7 +188,7 @@ public final class LiveVoiceActivity extends Activity {
             if (stopped || generation != turnGeneration.get()) return;
             String words = line.optString("text");
             if (!words.isBlank()) transcript.setText(words);
-            if ("working".equals(line.optString("kind"))) { status.setText("Thinking…"); pet.pose("thinking"); }
+            if ("working".equals(line.optString("kind"))) { status.setText("Thinking…"); pose("thinking"); }
             JSONObject display = line.optJSONObject("card");
             if (display == null && card.getVisibility() == android.view.View.VISIBLE
                     && java.util.Set.of("done", "blocked", "question", "error").contains(line.optString("kind"))) {
@@ -326,10 +330,10 @@ public final class LiveVoiceActivity extends Activity {
     }
     private void show(String title, String words) {
         int generation = turnGeneration.get();
-        main.post(() -> { if (stopped || generation != turnGeneration.get()) return; if (title != null) { status.setText(muted ? "Mic muted" : title); pet.pose(muted ? "Mic muted" : title); } if (words != null) transcript.setText(words); });
+        main.post(() -> { if (stopped || generation != turnGeneration.get()) return; if (title != null) { status.setText(muted ? "Mic muted" : title); pose(muted ? "Mic muted" : title); } if (words != null) transcript.setText(words); });
     }
     private void fail(String message) {
-        main.post(() -> { if (stopped) return; stop(); pet.pose("failed"); status.setText("Call ended"); transcript.setMaxLines(8); transcript.setLayoutParams(new LinearLayout.LayoutParams(-1, -2)); transcript.setText(message); mute.setImageResource(R.drawable.ic_voice_retry); mute.setContentDescription("Retry live voice call"); mute.setEnabled(true);
+        main.post(() -> { if (stopped) return; stop(); pose("failed"); status.setText("Call ended"); transcript.setMaxLines(8); transcript.setLayoutParams(new LinearLayout.LayoutParams(-1, -2)); transcript.setText(message); mute.setImageResource(R.drawable.ic_voice_retry); mute.setContentDescription("Retry live voice call"); mute.setEnabled(true);
             mute.setOnClickListener(v -> {
                 startActivity(new android.content.Intent(this, LiveVoiceActivity.class).putExtra("start_call", true).putExtra("migo", agent)); finish();
             }); });
@@ -360,7 +364,7 @@ public final class LiveVoiceActivity extends Activity {
         if (!stopped) pet.start();
     }
     @Override protected void onStop() {
-        if (!stopped) { stop(); pet.pose("failed"); status.setText("Call ended"); transcript.setText("You left the call. Go back to start again."); mute.setEnabled(false); }
+        if (!stopped) { stop(); pose("failed"); status.setText("Call ended"); transcript.setText("You left the call. Go back to start again."); mute.setEnabled(false); }
         super.onStop();
     }
     @Override protected void onDestroy() { stop(); main.removeCallbacksAndMessages(null); super.onDestroy(); }

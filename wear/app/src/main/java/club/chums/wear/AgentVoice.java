@@ -9,7 +9,24 @@ import org.json.JSONObject;
 /** Route speech to the existing agent session, never to a substitute chat model. */
 final class AgentVoice {
     static String forApp(String selected) {
-        return BuildConfig.FIXED_AGENT.isEmpty() ? selected : BuildConfig.FIXED_AGENT;
+        if (BuildConfig.FIXED_AGENT.isEmpty()) return selected;
+        return "stretch".equals(BuildConfig.FIXED_AGENT) && "ray".equals(selected) ? selected : BuildConfig.FIXED_AGENT;
+    }
+    /**
+     * The hub agent a provider app follows. Grok runs through Hermes, and a hub may keep that agent
+     * as "ray" with "stretch" switched off; follow whichever of the two is running there.
+     */
+    static String onHub(JSONObject state, String current) {
+        if (!"stretch".equals(BuildConfig.FIXED_AGENT) || state == null) return current;
+        boolean stretch = false, ray = false;
+        JSONArray agents = state.optJSONArray("agents");
+        for (int i = 0; agents != null && i < agents.length(); i++) {
+            JSONObject a = agents.optJSONObject(i);
+            if (a == null || "offline".equals(a.optString("status", "offline"))) continue;
+            if ("stretch".equals(a.optString("id"))) stretch = true;
+            if ("ray".equals(a.optString("id"))) ray = true;
+        }
+        return stretch ? "stretch" : ray ? "ray" : current;
     }
 
     interface Request { String send(String path, String body) throws Exception; }
@@ -17,6 +34,7 @@ final class AgentVoice {
     private final Request request;
     AgentVoice(Request request) { this.request = request; }
     static String name(String id) {
+        if ("stretch".equals(BuildConfig.FIXED_AGENT) && "ray".equals(id)) return "Grok";
         return switch (id) {
             case "noodle" -> "Codex";
             case "squint" -> "Claude";

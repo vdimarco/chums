@@ -1,16 +1,18 @@
 # Separate agent apps for Pixel Watch
 
 Three unofficial Wear OS apps share the existing Chums client and hub protocol.
-Higgsfield generated the concept sheet and three production artwork assets:
-sculpted ivory on graphite for Codex, organic terracotta on espresso for Claude,
-and liquid chrome on black for Grokbot. The artwork is bundled locally under
-`wear/app/src/main/assets/providers`; no image service or network request is
-needed to render a home screen. Native text and accessible buttons sit above it.
-Every action has a separate touch target of at least 48dp. Provider colors carry
-through history, settings and voice screens. Generation IDs, source URLs and
-prompts are recorded in `design/provider-watch/higgsfield/provenance.json`.
-The concepts and production screenshots are distinct artifacts: screenshots named
-`*-higgsfield.png` under `wear/screenshots/providers` show the implemented apps.
+Each app has its own skin, defined in `wear/app/src/main/java/club/chums/wear/Skin.java`:
+clay orange on warm charcoal with serif headings for Claude, ivory on graphite in
+monospace with squared corners for Codex, and white on black with hairline edges
+for Grokbot. Shared components live in `Ui.java`. The home dial puts the current
+task in the centre, one talk button in the bottom row, and a bezel ring that shows
+state: a sweeping arc while working, amber when the agent needs you, dashed when
+the hub is unreachable. Conversations use chat bubbles and an amber approval card.
+Every action has a separate touch target of at least 48dp. Screenshots named
+`*-redesign.png` under `wear/screenshots/providers` show the implemented apps.
+The earlier Higgsfield artwork stays under `wear/app/src/main/assets/providers`
+with its provenance in `design/provider-watch/higgsfield/provenance.json`, but
+the home screens no longer draw it.
 
 They install alongside ai migos and each other, with separate private connection
 settings, launcher icons and tiles. They retain live voice, streamed content cards,
