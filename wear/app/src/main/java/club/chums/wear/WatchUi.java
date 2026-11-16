@@ -136,6 +136,32 @@ final class WatchUi {
         view.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); action.run(); });
         return view;
     }
+    /** One compact line of a list: left-aligned, with a thin rule above it. */
+    static TextView row(LinearLayout parent, CharSequence words, int size, int maxLines) {
+        Context context = parent.getContext();
+        View rule = new View(context); rule.setBackgroundColor(raised());
+        parent.addView(rule, new LinearLayout.LayoutParams(-1, Math.max(1, dp(context, .5f))));
+        TextView view = new TextView(context); view.setText(words); view.setTextSize(size); view.setTextColor(ink());
+        view.setMaxLines(maxLines); view.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        view.setPadding(dp(context, 2), dp(context, 4), dp(context, 2), dp(context, 4));
+        parent.addView(view, new LinearLayout.LayoutParams(-1, -2));
+        return view;
+    }
+    /** A coloured lead, such as a time or a name, in front of the words of a row. */
+    static CharSequence lead(String lead, int color, String words) {
+        android.text.SpannableString text = new android.text.SpannableString(lead + "  " + words);
+        text.setSpan(new android.text.style.ForegroundColorSpan(color), 0, lead.length(), 0);
+        return text;
+    }
+    /** The age of an event: "now", "5m", "2h" or "3d". Empty when the time is not known. */
+    static String ago(long at, long now) {
+        if (at <= 0) return "";
+        long minutes = Math.max(0, now - at) / 60_000;
+        if (minutes < 1) return "now";
+        if (minutes < 60) return minutes + "m";
+        if (minutes < 60 * 24) return minutes / 60 + "h";
+        return minutes / (60 * 24) + "d";
+    }
     static View space(LinearLayout parent, int height) {
         View view = new View(parent.getContext());
         parent.addView(view, new LinearLayout.LayoutParams(-1, dp(parent.getContext(), height)));

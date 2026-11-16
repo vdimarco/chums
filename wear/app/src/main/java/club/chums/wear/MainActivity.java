@@ -84,6 +84,9 @@ public final class MainActivity extends Activity {
         speech = new TextToSpeech(this, status -> speechReady = status == TextToSpeech.SUCCESS);
         try { hub = new HubConnection(prefs.getString("url", ""), prefs.getString("token", ""), BuildConfig.DEBUG); }
         catch (IllegalArgumentException ignored) { }
+        // The last state that the hub sent. The side pages show it until the hub answers, and when it does not.
+        try { if (hub != null) state = new JSONObject(prefs.getString("state:" + selected, "")); }
+        catch (JSONException ignored) { }
         if (hub == null) showSettings(); else showHome();
         main.post(this::handleTileAction);
     }
@@ -154,7 +157,7 @@ public final class MainActivity extends Activity {
         primary("Save connection", () -> {
             try {
                 HubConnection next = new HubConnection(url.getText().toString(), token.getText().toString(), BuildConfig.DEBUG);
-                prefs.edit().putString("url", next.base).putString("token", token.getText().toString().trim()).apply();
+                prefs.edit().putString("url", next.base).putString("token", token.getText().toString().trim()).remove("state:" + selected).apply();
                 hub = next; state = null; connected = false; settings = false;
                 showHome(); startPolling();
             } catch (IllegalArgumentException e) { notice(e.getMessage()); }
@@ -177,6 +180,7 @@ public final class MainActivity extends Activity {
                     boolean changed = state == null || next.optLong("rev") != state.optLong("rev");
                     boolean wasConnected = connected;
                     state = next; connected = true;
+                    if (changed) prefs.edit().putString("state:" + selected, TaskSummary.keep(next, selected).toString()).apply();
                     if ((changed || !wasConnected) && history) showConversation();
                     if (!history) updateHeading();
                     main.postDelayed(() -> poll(run, next.optLong("rev")), 200);
@@ -285,61 +289,95 @@ public final class MainActivity extends Activity {
         setContentView(pager); updateHeading();
     }
 
-    /** Fill the two side pages from the last state. They show the state; the conversation page has the actions. */
+    /** Fill the two side pages from the last state. Rows are compact; a tap on a row opens the conversation. */
     private void showSidePages() {
         if (jobsPage == null) return;
-        String shown = (state == null ? -1 : state.optLong("rev")) + ":" + connected;
+        String shown = (state == null ? -1 : state.optLong("rev")) + ":" + connected + ":" + sending;
         if (shown.equals(sideShown)) return;
         sideShown = shown;
+        long now = System.currentTimeMillis();
         TaskSummary task = TaskSummary.from(state, selected, connected);
+        JSONObject agent = null;
+        for (int i = 0; i < array("agents").length(); i++) {
+            JSONObject item = array("agents").optJSONObject(i);
+            if (item != null && selected.equals(item.optString("id"))) agent = item;
+        }
+        int helpers = 0;
+        for (int i = 0; i < array("sessions").length(); i++) {
+            JSONObject session = array("sessions").optJSONObject(i);
+            if (session != null && selected.equals(session.optString("name"))) helpers = session.optInt("subagents");
+        }
+
         jobsPage.removeAllViews();
-        WatchUi.title(jobsPage, "Jobs");
-        WatchUi.text(jobsPage, task.status, 12, statusColor(task.status));
-        WatchUi.card(jobsPage, task.detail.isBlank() || task.detail.equals(task.title) ? task.title : task.title + "\n" + task.detail,
-            WatchUi.surface(), Gravity.CENTER).setGravity(Gravity.CENTER);
-        JSONArray sessions = array("sessions");
-        for (int i = 0; i < sessions.length(); i++) {
-            JSONObject session = sessions.optJSONObject(i);
-            int helpers = session != null && selected.equals(session.optString("id")) ? session.optInt("subagents") : 0;
-            if (helpers > 0) WatchUi.text(jobsPage, helpers == 1 ? "1 subagent is running" : helpers + " subagents are running", 12, WatchUi.signal());
+        jobsPage.setPadding(dp(20), dp(18), dp(20), dp(40));
+        WatchUi.title(jobsPage, "Jobs").setTextSize(14);
+        WatchUi.text(jobsPage, task.status + (helpers > 0 ? " · " + helpers + (helpers == 1 ? " subagent" : " subagents") : ""), 12, statusColor(task.status))
+            .setPadding(0, 0, 0, dp(2));
+        TextView title = WatchUi.text(jobsPage, task.title, 13, WatchUi.ink());
+        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        title.setMaxLines(2); title.setEllipsize(android.text.TextUtils.TruncateAt.END); title.setPadding(0, 0, 0, 0);
+        title.setOnClickListener(v -> showConversation());
+        if (!task.detail.isBlank() && !task.detail.equals(task.title)) {
+            TextView detail = WatchUi.text(jobsPage, task.detail, 11, WatchUi.muted());
+            detail.setMaxLines(2); detail.setEllipsize(android.text.TextUtils.TruncateAt.END); detail.setPadding(0, 0, 0, 0);
+        }
+        if (agent != null) {
+            StringBuilder facts = new StringBuilder(agent.optString("runtime", "claude"));
+            for (String key : new String[]{"model", "permission"})
+                if (agent.opt(key) instanceof String value && !value.isBlank()) facts.append(" · ").append(value);
+            WatchUi.text(jobsPage, facts.toString(), 10, WatchUi.muted()).setPadding(0, dp(2), 0, dp(4));
         }
         JSONArray approvals = array("approvals");
         for (int i = 0; i < approvals.length(); i++) {
             JSONObject approval = approvals.optJSONObject(i);
             if (approval == null || !selected.equals(approval.optString("session"))) continue;
-            WatchUi.text(jobsPage, "Needs approval", 12, WatchUi.warning());
-            WatchUi.card(jobsPage, (approval.optString("tool") + "\n" + approval.optString("description")).trim(), WatchUi.surface(), Gravity.CENTER);
+            WatchUi.row(jobsPage, WatchUi.lead("Approve?", WatchUi.warning(),
+                (approval.optString("tool") + " " + approval.optString("description")).trim()), 11, 2).setOnClickListener(v -> showConversation());
         }
-        WatchUi.space(jobsPage, 6);
-        WatchUi.text(jobsPage, "Recent activity", 11, WatchUi.muted());
         JSONArray tools = array("tools"); int activity = 0;
-        for (int i = tools.length() - 1; i >= 0 && activity < 4; i--) {
+        for (int i = tools.length() - 1; i >= 0 && activity < 8; i--) {
             JSONObject tool = tools.optJSONObject(i);
             if (tool == null || !selected.equals(tool.optString("session"))) continue;
-            WatchUi.card(jobsPage, (tool.optString("tool", tool.optString("type")) + "\n" + tool.optString("text", tool.optString("description", ""))).trim(),
-                WatchUi.surface(), Gravity.CENTER);
+            String name = tool.optString("tool", tool.optString("type")), words = tool.optString("text", tool.optString("description", ""));
+            WatchUi.row(jobsPage, WatchUi.lead((WatchUi.ago(tool.optLong("at"), now) + " " + name).trim(), WatchUi.signal(), words), 11, 1);
             activity++;
         }
-        if (activity == 0) WatchUi.text(jobsPage, connected ? "No recent activity" : "Waiting for the hub", 12, WatchUi.muted());
-        WatchUi.space(jobsPage, 6);
-        WatchUi.button(jobsPage, "Open task", false, this::showConversation);
+        if (activity == 0) WatchUi.row(jobsPage, state == null ? "Waiting for the hub" : "No recent tool events", 11, 1).setTextColor(WatchUi.muted());
+        sideActions(jobsPage);
 
         historyPage.removeAllViews();
-        WatchUi.title(historyPage, "History");
-        WatchUi.text(historyPage, "Newest first", 11, WatchUi.muted());
+        historyPage.setPadding(dp(20), dp(18), dp(20), dp(40));
+        TextView heading = WatchUi.title(historyPage, "History"); heading.setTextSize(14);
+        TextView count = WatchUi.text(historyPage, "", 11, WatchUi.muted()); count.setPadding(0, 0, 0, dp(3));
         JSONArray lines = array("spoken"); int messages = 0;
-        for (int i = lines.length() - 1; i >= 0 && messages < 12; i--) {
+        for (int i = lines.length() - 1; i >= 0; i--) {
             JSONObject line = lines.optJSONObject(i);
-            if (line == null || !selected.equals(line.optString("agent", "noodle")) || line.optString("text").isBlank()) continue;
+            if (line == null || !TaskSummary.mine(line, selected) || line.optString("text").isBlank()) continue;
             boolean own = "echo".equals(line.optString("kind"));
-            TextView message = WatchUi.card(historyPage, line.optString("text"), own ? WatchUi.ownBubble() : WatchUi.surface(), own ? Gravity.END : Gravity.START);
-            message.setMaxLines(6); message.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            String who = (WatchUi.ago(line.optLong("at"), now) + (own ? " You" : "")).trim();
+            TextView message = WatchUi.row(historyPage, who.isEmpty() ? line.optString("text")
+                : WatchUi.lead(who, own ? WatchUi.signal() : WatchUi.muted(), line.optString("text")), 12, 3);
             message.setContentDescription((own ? "You: " : AgentVoice.name(selected) + ": ") + line.optString("text"));
+            message.setOnClickListener(v -> showConversation());
             messages++;
         }
-        if (messages == 0) WatchUi.text(historyPage, connected ? "No messages yet" : "Waiting for the hub", 12, WatchUi.muted());
-        WatchUi.space(historyPage, 6);
-        WatchUi.button(historyPage, "Open conversation", false, this::showConversation);
+        count.setText(messages == 0 ? (state == null ? "Waiting for the hub" : "No messages yet")
+            : messages + (messages == 1 ? " message" : " messages") + ", newest first" + (connected ? "" : " · offline"));
+        sideActions(historyPage);
+    }
+    /** The actions at the end of a side page: start a new task by voice or by text, or open the conversation. */
+    private void sideActions(LinearLayout parent) {
+        WatchUi.space(parent, 6);
+        WatchUi.text(parent, "New task", 10, WatchUi.muted()).setPadding(0, 0, 0, 0);
+        LinearLayout pair = new LinearLayout(this);
+        parent.addView(pair, new LinearLayout.LayoutParams(-1, -2));
+        Button speak = WatchUi.button(pair, "Speak", true, this::startLive);
+        Button type = WatchUi.button(pair, "Type", false, this::composeMessage);
+        speak.setContentDescription("New task by voice"); type.setContentDescription("New task by text"); type.setEnabled(!sending);
+        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, -2, 1), right = new LinearLayout.LayoutParams(0, -2, 1);
+        left.topMargin = right.topMargin = dp(3); left.rightMargin = dp(3); right.leftMargin = dp(3);
+        speak.setLayoutParams(left); type.setLayoutParams(right);
+        WatchUi.button(parent, "Open conversation", false, this::showConversation);
     }
 
     private void showConversation() {
@@ -387,7 +425,7 @@ public final class MainActivity extends Activity {
         JSONArray lines = array("spoken");
         for (int i = lines.length() - 1; i >= 0; i--) {
             JSONObject line = lines.optJSONObject(i);
-            if (line == null || !selected.equals(line.optString("agent", "noodle"))) continue;
+            if (line == null || !TaskSummary.mine(line, selected)) continue;
             String text = line.optString("text");
             boolean own = "echo".equals(line.optString("kind"));
             if (!messages) { messages = true; WatchUi.space(content, 8); label("Messages, newest first", 11).setTextColor(WatchUi.muted()); }
