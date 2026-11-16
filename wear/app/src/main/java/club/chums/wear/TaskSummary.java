@@ -22,7 +22,7 @@ final class TaskSummary {
         JSONArray spoken = state == null ? null : state.optJSONArray("spoken");
         if (spoken != null) for (int i = spoken.length() - 1; i >= 0; i--) {
             JSONObject item = spoken.optJSONObject(i);
-            if (item != null && agent.equals(item.optString("agent")) && "echo".equals(item.optString("kind"))) {
+            if (item != null && mine(item, agent) && "echo".equals(item.optString("kind"))) {
                 title = item.optString("text"); break;
             }
         }
@@ -38,6 +38,32 @@ final class TaskSummary {
         if (idle) title = "Open recent conversation";
         else if (title.isBlank()) title = detail.isBlank() ? "Open task details" : detail;
         return new TaskSummary(label, title.replaceAll("\\s+", " ").trim(), detail);
+    }
+    /** A line belongs to an agent by its "agent" field, or by its "session" for a hub that sets only that. */
+    static boolean mine(JSONObject line, String agent) {
+        String owner = line.optString("agent");
+        return agent.equals(owner.isEmpty() ? line.optString("session") : owner);
+    }
+    /** The part of a state to keep on the watch for one agent: no voices and no other agent's lines. */
+    static JSONObject keep(JSONObject state, String agent) {
+        JSONObject kept = new JSONObject();
+        try {
+            kept.put("rev", state.optLong("rev"));
+            for (String key : new String[]{"agents", "sessions", "approvals", "tools", "spoken"}) {
+                JSONArray from = state.optJSONArray(key), to = new JSONArray();
+                if (from != null) for (int i = 0; i < from.length(); i++) {
+                    JSONObject item = from.optJSONObject(i);
+                    if (item == null) continue;
+                    if ("spoken".equals(key)) {
+                        if (!mine(item, agent)) continue;
+                        item = new JSONObject(item.toString()); item.remove("audioData"); item.remove("audio");
+                    }
+                    to.put(item);
+                }
+                kept.put(key, to);
+            }
+        } catch (org.json.JSONException e) { throw new IllegalStateException(e); }
+        return kept;
     }
     static String label(String status, boolean connected) {
         if (!connected) return "Offline · last known task";

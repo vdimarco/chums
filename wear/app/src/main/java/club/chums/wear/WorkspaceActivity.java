@@ -28,23 +28,12 @@ public final class WorkspaceActivity extends Activity {
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private void page(String title) {
         generation++;
-        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
-        content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(26), dp(28), dp(26), dp(36)); content.setBackgroundColor(ProviderHome.background());
-        scroll.addView(content); setContentView(scroll); text(title).setTextSize(19);
-        scroll.setOnGenericMotionListener((v, event) -> {
-            if (event.getAction() != android.view.MotionEvent.ACTION_SCROLL) return false;
-            scroll.smoothScrollBy(0, Math.round(-event.getAxisValue(android.view.MotionEvent.AXIS_SCROLL) * dp(36))); return true;
-        }); scroll.requestFocus();
+        content = WatchUi.page(this); WatchUi.title(content, title);
     }
-    private TextView text(String words) {
-        TextView view = new TextView(this); view.setText(words); view.setTextSize(14); view.setTextColor(ProviderHome.ink());
-        view.setGravity(Gravity.CENTER); view.setPadding(0, dp(6), 0, dp(6)); content.addView(view); return view;
-    }
-    private Button button(String words, Runnable action) {
-        Button view = new Button(this); view.setText(words); view.setAllCaps(false); view.setMinHeight(dp(48));
-        content.addView(view, new LinearLayout.LayoutParams(-1, -2)); view.setOnClickListener(v -> action.run()); return view;
-    }
+    private TextView text(String words) { return WatchUi.text(content, words, 13, WatchUi.ink()); }
+    private TextView note(String words) { return WatchUi.text(content, words, 12, WatchUi.muted()); }
+    private TextView card(String words) { return WatchUi.card(content, words.trim(), WatchUi.surface(), Gravity.CENTER); }
+    private Button button(String words, Runnable action) { return WatchUi.button(content, words, false, action); }
     private interface Result { void show(JSONObject value) throws Exception; }
     private void load(String path, Result result) {
         int request = generation;
@@ -62,7 +51,7 @@ public final class WorkspaceActivity extends Activity {
     }
     private void showWorkspace() {
         page(AgentVoice.name(agent));
-        text("Current agent session");
+        note("Current agent session");
         button("Models", this::showModels);
         button("Background alerts", this::showAlerts);
         button("Refresh", this::showWorkspace);
@@ -71,15 +60,15 @@ public final class WorkspaceActivity extends Activity {
             JSONArray agents = state.optJSONArray("agents");
             if (agents != null) for (int i = 0; i < agents.length(); i++) {
                 JSONObject item = agents.getJSONObject(i);
-                if (agent.equals(item.optString("id"))) text("Runtime: " + item.optString("runtime") + "\nModel: " + item.optString("model", "Default") + "\n" + item.optString("status") + "\n" + item.optString("line", ""));
+                if (agent.equals(item.optString("id"))) card("Runtime: " + item.optString("runtime") + "\nModel: " + item.optString("model", "Default") + "\n" + item.optString("status") + "\n" + item.optString("line", ""));
             }
             JSONArray tools = state.optJSONArray("tools"); int shown = 0;
             if (tools != null) for (int i = tools.length() - 1; i >= 0; i--) {
                 JSONObject tool = tools.getJSONObject(i);
                 if (!agent.equals(tool.optString("session"))) continue;
-                text(tool.optString("tool", tool.optString("type")) + "\n" + tool.optString("text", tool.optString("description", ""))); shown++;
+                card(tool.optString("tool", tool.optString("type")) + "\n" + tool.optString("text", tool.optString("description", ""))); shown++;
             }
-            if (shown == 0) text("No recent tool activity.");
+            if (shown == 0) note("No recent tool activity.");
         });
     }
     private void showAlerts() {
@@ -87,8 +76,8 @@ public final class WorkspaceActivity extends Activity {
         var prefs = getSharedPreferences("hub", MODE_PRIVATE);
         boolean enabled = prefs.getBoolean("alerts", false);
         text(enabled ? "Background checks enabled" : "Background checks disabled");
-        text("Checks about every 15 minutes when Android permits. Alerts can be delayed while asleep or offline. No message content appears on the lock screen.");
-        button(enabled ? "Disable alerts" : "Enable alerts", () -> {
+        note("Checks about every 15 minutes when Android permits. Alerts can be delayed while asleep or offline. No message content appears on the lock screen.");
+        WatchUi.button(content, enabled ? "Disable alerts" : "Enable alerts", !enabled, () -> {
             if (!enabled && android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 41); return;
             }

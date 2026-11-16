@@ -53,36 +53,38 @@ public final class LiveVoiceActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true); scroll.setBackgroundColor(ProviderHome.background());
+        scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false); scroll.setBackgroundColor(WatchUi.background());
         LinearLayout column = new LinearLayout(this); column.setOrientation(LinearLayout.VERTICAL);
-        column.setGravity(Gravity.CENTER); column.setPadding(dp(22), dp(2), dp(22), dp(2));
+        column.setGravity(Gravity.CENTER); column.setPadding(dp(24), dp(16), dp(24), dp(16));
         scroll.addView(column);
         setContentView(scroll);
         agent = getIntent().getStringExtra("migo");
         if (agent == null) agent = getSharedPreferences("hub", MODE_PRIVATE).getString("agent", "noodle");
         agent = AgentVoice.forApp(agent);
         try { AgentVoice.name(agent); } catch (IllegalArgumentException ignored) { agent = "noodle"; }
-        text(column, AgentVoice.name(agent) + " · LIVE", 11).setTextColor(ProviderHome.accent());
+        TextView live = text(column, AgentVoice.name(agent).toUpperCase(java.util.Locale.ROOT) + " · LIVE", 10);
+        live.setTextColor(WatchUi.signal()); live.setLetterSpacing(.06f);
         status = text(column, "Ready to talk", 16);
+        status.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         companion = new ImageView(this);
         pet = new PetDrawable(this, agent, "idle");
         if (BuildConfig.FIXED_AGENT.isEmpty()) companion.setImageDrawable(pet);
         else companion.setImageResource(getApplicationInfo().icon);
         companion.setScaleType(ImageView.ScaleType.FIT_CENTER);
         companion.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        column.addView(companion, new LinearLayout.LayoutParams(-1, dp(64)));
+        column.addView(companion, new LinearLayout.LayoutParams(-1, dp(46)));
         card = new WatchCard(this); column.addView(card, new LinearLayout.LayoutParams(-1, -2));
         transcript = text(column, "Speak naturally. You can interrupt.", 11); transcript.setMaxLines(2);
-        transcript.setPadding(dp(10), 0, dp(10), 0);
-        GradientDrawable bubble = new GradientDrawable(); bubble.setColor("squint".equals(BuildConfig.FIXED_AGENT) ? 0xff3c2117 : 0xff1d2229); bubble.setCornerRadius(dp(16));
-        transcript.setBackground(bubble);
-        transcript.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(30)));
+        transcript.setPadding(dp(12), dp(2), dp(12), dp(2));
+        transcript.setBackground(WatchUi.fill(this, WatchUi.surface(), 16));
+        transcript.setLayoutParams(bubble(dp(32)));
         LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER);
-        column.addView(controls, new LinearLayout.LayoutParams(-1, dp(48)));
-        action(controls, R.drawable.ic_voice_end, "End call and go back", 0xffff89b1, () -> { stop(); finish(); });
-        mute = action(controls, R.drawable.ic_voice_play, "Start live voice call", 0xff80e1d6, this::startCall);
+        // The note is above the controls: the bottom of a round screen is too narrow for a line of text.
         memoryStatus = text(column, "Transcripts sync automatically", 9);
-        memoryStatus.setTextColor(0xff8e9b9f);
+        memoryStatus.setTextColor(WatchUi.muted());
+        column.addView(controls, new LinearLayout.LayoutParams(-1, dp(48)));
+        action(controls, R.drawable.ic_voice_end, "End call and go back", WatchUi.danger(), WatchUi.onDanger(), () -> { stop(); finish(); });
+        mute = action(controls, R.drawable.ic_voice_play, "Start live voice call", WatchUi.accent(), WatchUi.onAccent(), this::startCall);
         if (getIntent().getBooleanExtra("start_call", false)) startCall();
     }
     private void startCall() {
@@ -92,18 +94,22 @@ public final class LiveVoiceActivity extends Activity {
         else connect();
     }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
+    private LinearLayout.LayoutParams bubble(int height) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, height);
+        params.topMargin = dp(4); params.bottomMargin = dp(2); return params;
+    }
     private TextView text(LinearLayout parent, String value, int size) {
-        TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(ProviderHome.ink());
+        TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(WatchUi.ink());
         t.setGravity(Gravity.CENTER); t.setPadding(0, dp(2), 0, dp(2)); parent.addView(t); return t;
     }
-    private ImageButton action(LinearLayout parent, int icon, String description, int color, Runnable run) {
+    private ImageButton action(LinearLayout parent, int icon, String description, int color, int ink, Runnable run) {
         ImageButton button = new ImageButton(this); button.setImageResource(icon);
-        button.setImageTintList(android.content.res.ColorStateList.valueOf(0xff142327));
+        button.setImageTintList(android.content.res.ColorStateList.valueOf(ink));
         button.setContentDescription(description); button.setPadding(dp(13), dp(13), dp(13), dp(13));
         GradientDrawable shape = new GradientDrawable(); shape.setColor(color); shape.setShape(GradientDrawable.OVAL);
         button.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x44ffffff), shape, null));
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(48), dp(48));
-        size.setMargins(dp(10), 0, dp(10), 0); parent.addView(button, size);
+        size.setMargins(dp(8), 0, dp(8), 0); parent.addView(button, size);
         button.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); run.run(); });
         return button;
     }
@@ -329,7 +335,7 @@ public final class LiveVoiceActivity extends Activity {
         main.post(() -> { if (stopped || generation != turnGeneration.get()) return; if (title != null) { status.setText(muted ? "Mic muted" : title); pet.pose(muted ? "Mic muted" : title); } if (words != null) transcript.setText(words); });
     }
     private void fail(String message) {
-        main.post(() -> { if (stopped) return; stop(); pet.pose("failed"); status.setText("Call ended"); transcript.setMaxLines(8); transcript.setLayoutParams(new LinearLayout.LayoutParams(-1, -2)); transcript.setText(message); mute.setImageResource(R.drawable.ic_voice_retry); mute.setContentDescription("Retry live voice call"); mute.setEnabled(true);
+        main.post(() -> { if (stopped) return; stop(); pet.pose("failed"); status.setText("Call ended"); companion.setVisibility(android.view.View.GONE); transcript.setMaxLines(8); transcript.setLayoutParams(bubble(-2)); transcript.setPadding(dp(12), dp(8), dp(12), dp(8)); transcript.setText(message); mute.setImageResource(R.drawable.ic_voice_retry); mute.setContentDescription("Retry live voice call"); mute.setEnabled(true);
             mute.setOnClickListener(v -> {
                 startActivity(new android.content.Intent(this, LiveVoiceActivity.class).putExtra("start_call", true).putExtra("migo", agent)); finish();
             }); });
