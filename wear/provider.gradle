@@ -1,0 +1,27 @@
+android {
+    namespace 'club.chums.wear'
+    compileSdk 35
+    buildToolsVersion '36.0.0'
+    defaultConfig {
+        applicationId 'club.chums.wear'
+        minSdk 30
+        targetSdk 35
+        testInstrumentationRunner 'club.chums.wear.MemoryInstrumentation'
+        versionCode 2
+        versionName '0.2.0'
+        buildConfigField 'String', 'FIXED_AGENT', '""'
+        buildConfigField 'String', 'APP_TITLE', '"migos"'
+        manifestPlaceholders = [appLabel: 'ai migos', appIcon: '@drawable/migos_logo']
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'androidx.wear.tiles:tiles:1.4.1'
+    implementation 'androidx.concurrent:concurrent-futures:1.1.0'
+    testImplementation 'junit:junit:4.13.2'
+}

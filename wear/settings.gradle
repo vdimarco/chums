@@ -1,0 +1,21 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+rootProject.name = 'ChumsWear'
+include ':app'
+// Other local watch projects are optional in the provider-app checkout.
+if (file('paper/build.gradle').exists() && file('faces/atelier.json').exists()) {
+    include ':paper'
+    include ':lightscore'
+    include ':faces:contour', ':faces:radial', ':faces:counterweight',
+            ':faces:chromatic', ':faces:eventide', ':faces:daynight',
+            ':faces:orbits', ':faces:wordclock', ':faces:drift'
+    new groovy.json.JsonSlurper().parse(file('faces/atelier.json')).each {
+        include ":faces:${it.id}"
+    }
+    new groovy.json.JsonSlurper().parse(file('faces/round-studies/catalog.json')).each {
+        include ":faces:${it.id}"
+        project(":faces:${it.id}").projectDir = file(it.path)
+    }
+}
+
+include ':codex', ':claude', ':grokbot'

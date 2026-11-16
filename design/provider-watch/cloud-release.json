@@ -1,0 +1,13 @@
+{
+  "deployment": "dpl_CQ6BS5bAcgKnbasH8iVFXPY7nvFc",
+  "baseline": "dpl_5gp6ff6h9j1unveP2YGqEf7sCkz5",
+  "url": "https://chums-watch.vercel.app",
+  "status": "READY",
+  "target": "production",
+  "runtimePreserved": "0edd5948a0a26d0e2bb6bbe6a08a7529c370c567",
+  "changes": {
+    "lib/sandbox.mjs": "5c327d5edd559c9342ebd3e9d6bb515a7303638d",
+    "lib/relay.mjs": "1853310f334649212c70e72c958c18ab000e7347"
+  },
+  "smokeTest": "HTTP 401 with Unauthorized JSON for unauthenticated state requests; authenticated provider calls not verified"
+}
