@@ -24,4 +24,6 @@ dependencies {
     implementation 'androidx.wear.tiles:tiles:1.4.1'
     implementation 'androidx.concurrent:concurrent-futures:1.1.0'
     testImplementation 'junit:junit:4.13.2'
+    // The Android jar for unit tests has no working org.json; this one is the same API.
+    testImplementation 'org.json:json:20240303'
 }
