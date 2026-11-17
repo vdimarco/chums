@@ -103,12 +103,14 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume(); active = true; if (pet != null) pet.start(); main.removeCallbacks(cycleMigo);
+        Usage.screen(this, settings ? "settings" : history ? "history" : "home");
         if (!settings && !history) main.postDelayed(cycleMigo, 8000); startPolling();
     }
     @Override protected void onPause() {
         active = false; generation++; main.removeCallbacks(cycleMigo);
         if (pet != null) pet.stop();
         if (speech != null) speech.stop();
+        Usage.pause(this);
         super.onPause();
     }
     @Override protected void onDestroy() {
@@ -173,6 +175,7 @@ public final class MainActivity extends Activity {
     // shortcut: manual pairing for sideloaded builds, replace with phone pairing before store release.
     @android.annotation.SuppressLint("WearPasswordInput")
     private void showSettings() {
+        Usage.screen(this, "settings");
         settings = true; generation++;
         page("Connect " + BuildConfig.APP_TITLE);
         caption("Hub HTTPS address");
@@ -229,6 +232,7 @@ public final class MainActivity extends Activity {
     private void showHome() {
         int position = scroll == null || settings || history ? 0 : scroll.getScrollY();
         settings = false; history = false;
+        Usage.screen(this, "home");
         if (!BuildConfig.FIXED_AGENT.isEmpty()) { showProviderHome(); return; }
         JSONArray agents = array("agents");
         JSONObject agent = null;
@@ -292,6 +296,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showProviderHome() {
+        Usage.screen(this, "home");
         if (getResources().getConfiguration().fontScale >= 1.3f) {
             page(BuildConfig.APP_TITLE);
             connectionMark = label("", 14);
@@ -313,6 +318,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showConversation() {
+        Usage.screen(this, "history");
         int position = history ? scroll.getScrollY() : 0;
         history = true;
         String name = AgentVoice.name(selected);
@@ -420,6 +426,7 @@ public final class MainActivity extends Activity {
             if (text.isEmpty()) { message.setError("Enter a message"); return; }
             if (sending) return;
             prefs.edit().putString("draft", text).apply();
+            Usage.event(this, "message_sent");
             post("/v1/say", object("agent", selected, "text", text, "device", "watch"));
             dialog.dismiss();
             });

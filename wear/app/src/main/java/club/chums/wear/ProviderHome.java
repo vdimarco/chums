@@ -55,7 +55,7 @@ final class ProviderHome extends FrameLayout {
                 super.onInitializeAccessibilityNodeInfo(host, info); info.setClassName("android.widget.Button");
             }
         });
-        task.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); history.run(); });
+        task.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); Usage.tap(context, "Current task"); history.run(); });
         place(task, 28, 64, 172, 74);
 
         place(Ui.icon(context, R.drawable.ic_provider_history, "Conversation history", Ui.TONAL, skin.icon, 14, history), 28, 148, 48, 48);

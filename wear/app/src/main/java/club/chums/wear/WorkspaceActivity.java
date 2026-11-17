@@ -74,6 +74,7 @@ public final class WorkspaceActivity extends Activity {
         });
     }
     private void showWorkspace() {
+        Usage.screen(this, "workspace");
         page(AgentVoice.name(agent));
         note("Current agent session");
         button("Models", this::showModels);
@@ -97,6 +98,7 @@ public final class WorkspaceActivity extends Activity {
     }
     /** Chats this provider has had on the hub's computer; the watch only reads them. */
     private void showChats() {
+        Usage.screen(this, "chats");
         page("Recent chats"); note("On your computer"); int request = generation;
         worker.execute(() -> {
             JSONArray chats = null;
@@ -125,6 +127,7 @@ public final class WorkspaceActivity extends Activity {
         });
     }
     private void showChat(String id, String title) {
+        Usage.screen(this, "chat");
         page(AgentVoice.name(agent)); note(title).setMaxLines(3); int request = generation;
         worker.execute(() -> {
             JSONArray messages = null;
@@ -148,6 +151,7 @@ public final class WorkspaceActivity extends Activity {
         return minutes < 1 ? "now" : minutes < 60 ? minutes + "m ago" : minutes < 1440 ? minutes / 60 + "h ago" : minutes / 1440 + "d ago";
     }
     private void showAlerts() {
+        Usage.screen(this, "alerts");
         page("Background alerts");
         var prefs = getSharedPreferences("hub", MODE_PRIVATE);
         boolean enabled = prefs.getBoolean("alerts", false);
@@ -180,6 +184,7 @@ public final class WorkspaceActivity extends Activity {
         if (request == 41 && results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) toggleAlerts(true);
     }
     private void showModels() {
+        Usage.screen(this, "models");
         page("Models"); button("Back", Ui.OUTLINE, this::showWorkspace);
         load("/v1/state?device=watch", state -> {
             JSONArray agents = state.optJSONArray("agents"); String runtime = "";
@@ -215,6 +220,7 @@ public final class WorkspaceActivity extends Activity {
         });
     }
     private void showArtifact(JSONObject artifact) {
+        Usage.screen(this, "attachment");
         page(artifact.optString("title", "Attachment")); button("Back", Ui.OUTLINE, this::finish);
         String id = artifact.optString("id");
         if (!validArtifactId(id)) { text("Invalid attachment"); return; }
@@ -233,5 +239,6 @@ public final class WorkspaceActivity extends Activity {
         });
     }
     static boolean validArtifactId(String id) { return id != null && id.matches("[0-9a-f]{12}"); }
+    @Override protected void onPause() { Usage.pause(this); super.onPause(); }
     @Override public void onDestroy() { generation++; worker.shutdownNow(); super.onDestroy(); }
 }

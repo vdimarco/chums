@@ -75,7 +75,7 @@ final class Ui {
         button.setMinHeight(dp(context, 48)); button.setMinimumHeight(dp(context, 48));
         button.setPadding(dp(context, 16), dp(context, 6), dp(context, 16), dp(context, 6));
         button.setStateListAnimator(null); button.setBackground(shape(context, kind, s.radius));
-        button.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); action.run(); });
+        button.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); Usage.tap(context, title); action.run(); });
         return button;
     }
     static ImageButton icon(Context context, int resource, String description, int kind, float radiusDp, float paddingDp, Runnable action) {
@@ -84,7 +84,7 @@ final class Ui {
         button.setContentDescription(description); button.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int padding = dp(context, paddingDp); button.setPadding(padding, padding, padding, padding);
         button.setBackground(shape(context, kind, radiusDp));
-        button.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); action.run(); });
+        button.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); Usage.tap(context, description); action.run(); });
         return button;
     }
     static TextView text(Context context, CharSequence value, float size, int color, Typeface face) {

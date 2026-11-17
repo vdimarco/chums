@@ -361,8 +361,10 @@ public final class LiveVoiceActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume();
+        Usage.screen(this, "live");
         if (!stopped) pet.start();
     }
+    @Override protected void onPause() { Usage.pause(this); super.onPause(); }
     @Override protected void onStop() {
         if (!stopped) { stop(); pose("failed"); status.setText("Call ended"); transcript.setText("You left the call. Go back to start again."); mute.setEnabled(false); }
         super.onStop();
