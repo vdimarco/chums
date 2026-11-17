@@ -23,6 +23,7 @@ public final class WorkspaceActivity extends Activity {
             hub = new HubConnection(prefs.getString("url", ""), prefs.getString("token", ""), BuildConfig.DEBUG);
             String artifact = getIntent().getStringExtra("artifact");
             if (artifact != null) showArtifact(new JSONObject(artifact));
+            else if (getIntent().getStringExtra("chat") != null) showChat(getIntent().getStringExtra("chat"), getIntent().getStringExtra("title"));
             else if (getIntent().getBooleanExtra("chats", false)) showChats(); else showWorkspace();
         } catch (Exception e) { page("Unavailable"); note("Connect the app to your hub first."); button("Back", Ui.OUTLINE, this::finish); }
     }

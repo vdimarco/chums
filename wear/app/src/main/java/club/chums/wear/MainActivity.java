@@ -39,6 +39,9 @@ public final class MainActivity extends Activity {
     private ProviderPager pager;
     private LinearLayout jobsPage, historyPage;
     private String sideShown = "";
+    /** The provider's chats on the hub's computer, newest first. They include work that did not start on the watch. */
+    private JSONArray chats;
+    private final Runnable loadChats = this::loadChats;
     private int sidePage;
     private ImageView companion;
     private String migo = "noodle";
@@ -88,6 +91,7 @@ public final class MainActivity extends Activity {
         // The last state that the hub sent. The side pages show it until the hub answers, and when it does not.
         try { if (hub != null) state = new JSONObject(prefs.getString("state:" + selected, "")); }
         catch (JSONException ignored) { }
+        try { chats = new JSONArray(prefs.getString("chats:" + selected, "")); } catch (JSONException ignored) { }
         if (hub == null) showSettings(); else showHome();
         main.post(this::handleTileAction);
     }
@@ -114,7 +118,7 @@ public final class MainActivity extends Activity {
         if (!settings && !history) main.postDelayed(cycleMigo, 8000); startPolling();
     }
     @Override protected void onPause() {
-        active = false; generation++; main.removeCallbacks(cycleMigo);
+        active = false; generation++; main.removeCallbacks(cycleMigo); main.removeCallbacks(loadChats);
         if (pet != null) pet.stop();
         if (speech != null) speech.stop();
         Usage.pause(this);
@@ -205,6 +209,34 @@ public final class MainActivity extends Activity {
     private void startPolling() {
         int run = ++generation;
         if (active && !settings && hub != null) poll(run, 0);
+        main.removeCallbacks(loadChats); loadChats();
+    }
+    /** Read the provider's chats from the hub's computer now, and again each 20 seconds while the app is in view. */
+    private void loadChats() {
+        main.removeCallbacks(loadChats);
+        if (!active || settings || hub == null || BuildConfig.FIXED_AGENT.isEmpty()) return;
+        HubConnection client = hub; String agent = selected; int run = generation;
+        commands.execute(() -> {
+            JSONArray found = null;
+            try { found = new JSONObject(client.request("/v1/chats?agent=" + agent, null)).optJSONArray("chats"); } catch (Exception ignored) { }
+            JSONArray next = found;
+            main.post(() -> {
+                if (!active || run != generation) return;
+                if (next != null && agent.equals(selected)) {
+                    chats = next; prefs.edit().putString("chats:" + agent, next.toString()).apply();
+                    sideShown = ""; if (!history) updateHeading();
+                }
+                main.postDelayed(loadChats, 20_000);
+            });
+        });
+    }
+    private void openChat(JSONObject chat) {
+        startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected)
+            .putExtra("chat", chat.optString("id")).putExtra("title", chat.optString("title")));
+    }
+    private static String chatWords(JSONObject chat) {
+        String title = chat.optString("title").replaceAll("https?://(www\\.)?", ""), project = chat.optString("project");
+        return project.isEmpty() ? title : title + " · " + project;
     }
     private void poll(int run, long revision) {
         if (!active || settings || run != generation) return;
@@ -349,9 +381,21 @@ public final class MainActivity extends Activity {
             if (session != null && selected.equals(session.optString("name"))) helpers = session.optInt("subagents");
         }
 
+        java.util.List<JSONObject> all = TaskSummary.distinct(chats), running = new java.util.ArrayList<>();
+        for (JSONObject chat : all) if (TaskSummary.active(chat, now)) running.add(chat);
+        boolean quiet = "No task running".equals(task.status);
+
         jobsPage.removeAllViews();
         jobsPage.setPadding(dp(20), dp(18), dp(20), dp(40));
         WatchUi.title(jobsPage, "Jobs").setTextSize(14);
+        if (!running.isEmpty()) {
+            WatchUi.text(jobsPage, running.size() + " active on your computer", 12, WatchUi.signal()).setPadding(0, 0, 0, dp(2));
+            for (JSONObject chat : running)
+                WatchUi.row(jobsPage, WatchUi.lead(WatchUi.ago(chat.optLong("at"), now), WatchUi.signal(), chatWords(chat)), 12, 2)
+                    .setOnClickListener(v -> openChat(chat));
+            WatchUi.space(jobsPage, 4);
+            WatchUi.text(jobsPage, "From the watch", 10, WatchUi.muted()).setPadding(0, 0, 0, 0);
+        }
         WatchUi.text(jobsPage, task.status + (helpers > 0 ? " · " + helpers + (helpers == 1 ? " subagent" : " subagents") : ""), 12, statusColor(task.status))
             .setPadding(0, 0, 0, dp(2));
         TextView title = WatchUi.text(jobsPage, task.title, 13, WatchUi.ink());
@@ -383,7 +427,8 @@ public final class MainActivity extends Activity {
             WatchUi.row(jobsPage, WatchUi.lead((WatchUi.ago(tool.optLong("at"), now) + " " + name).trim(), WatchUi.signal(), words), 11, 1);
             activity++;
         }
-        if (activity == 0) WatchUi.row(jobsPage, state == null ? "Waiting for the hub" : "No recent tool events", 11, 1).setTextColor(WatchUi.muted());
+        if (activity == 0 && !(quiet && !running.isEmpty()))
+            WatchUi.row(jobsPage, state == null ? "Waiting for the hub" : "No recent tool events", 11, 1).setTextColor(WatchUi.muted());
         sideActions(jobsPage);
 
         historyPage.removeAllViews();
@@ -402,8 +447,14 @@ public final class MainActivity extends Activity {
             message.setOnClickListener(v -> showConversation());
             messages++;
         }
-        count.setText(messages == 0 ? (state == null ? "Waiting for the hub" : "No messages yet")
-            : messages + (messages == 1 ? " message" : " messages") + ", newest first" + (connected ? "" : " · offline"));
+        count.setText(messages == 0 ? (state == null ? "Waiting for the hub" : "No messages from the watch yet")
+            : messages + (messages == 1 ? " message" : " messages") + " from the watch, newest first" + (connected ? "" : " · offline"));
+        WatchUi.space(historyPage, 6);
+        WatchUi.text(historyPage, chats == null ? "Chats on your computer: waiting for the hub"
+            : all.isEmpty() ? "No chats found on your computer" : "Chats on your computer", 10, WatchUi.muted()).setPadding(0, 0, 0, 0);
+        for (JSONObject chat : all)
+            WatchUi.row(historyPage, WatchUi.lead(WatchUi.ago(chat.optLong("at"), now),
+                TaskSummary.active(chat, now) ? WatchUi.signal() : WatchUi.muted(), chatWords(chat)), 12, 2).setOnClickListener(v -> openChat(chat));
         sideActions(historyPage);
     }
     /** The actions at the end of a side page: start a new task by voice or by text, or open the conversation. */
@@ -561,9 +612,15 @@ public final class MainActivity extends Activity {
             TaskSummary task = TaskSummary.from(state, selected, connected);
             if (taskCard != null) {
                 // The line above the card already says the hub is offline.
-                taskCard.setText(Ui.labelled(home != null && !connected ? "Last known task" : task.status, statusColor(task.status),
-                    (home != null && "noodle".equals(BuildConfig.FIXED_AGENT) ? "> " : "") + task.title, true));
-                taskCard.setContentDescription("Open current task. " + task.status + ". " + task.title);
+                // Work that started on the computer shows here when the watch's own agent has no task.
+                JSONObject busy = null;
+                if (connected && "No task running".equals(task.status))
+                    for (JSONObject chat : TaskSummary.distinct(chats)) if (TaskSummary.active(chat, System.currentTimeMillis())) { busy = chat; break; }
+                String label = busy != null ? "Active on your computer" : home != null && !connected ? "Last known task" : task.status;
+                String words = busy != null ? busy.optString("title") : task.title;
+                taskCard.setText(Ui.labelled(label, busy != null ? Skin.NOW.label : statusColor(task.status),
+                    (home != null && "noodle".equals(BuildConfig.FIXED_AGENT) ? "> " : "") + words, true));
+                taskCard.setContentDescription("Open current task. " + label + ". " + words);
             }
             MigosTileService.remember(this, task.status, task.title);
             showSidePages();
