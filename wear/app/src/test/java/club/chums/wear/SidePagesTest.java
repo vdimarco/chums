@@ -35,4 +35,18 @@ public class SidePagesTest {
         assertEquals("Offline · last known task", TaskSummary.from(kept, "squint", false).status);
         assertEquals("Fix the build", TaskSummary.from(kept, "squint", false).title);
     }
+    @Test public void chatsOnTheComputerShowOnceAndAreActiveForThreeMinutes() throws Exception {
+        long now = 1_000_000_000L;
+        JSONArray chats = new JSONArray()
+            .put(new JSONObject().put("id", "a").put("title", "Fix the build").put("project", "Work").put("at", now - 60_000))
+            .put(new JSONObject().put("id", "b").put("title", "Fix the build").put("project", "Work").put("at", now - 90_000))
+            .put(new JSONObject().put("id", "c").put("title", "Fix the build").put("project", "Other").put("at", now - 200_000))
+            .put(new JSONObject().put("id", "d").put("title", " ").put("project", "Work").put("at", now));
+        java.util.List<JSONObject> shown = TaskSummary.distinct(chats);
+        assertEquals(2, shown.size());
+        assertEquals("a", shown.get(0).getString("id"));
+        assertTrue(TaskSummary.active(shown.get(0), now));
+        assertFalse(TaskSummary.active(shown.get(1), now));
+        assertTrue(TaskSummary.distinct(null).isEmpty());
+    }
 }

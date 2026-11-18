@@ -65,6 +65,18 @@ final class TaskSummary {
         } catch (org.json.JSONException e) { throw new IllegalStateException(e); }
         return kept;
     }
+    /** A chat on the computer counts as active while its file changed in the last three minutes. */
+    static boolean active(JSONObject chat, long now) { return now - chat.optLong("at") < 3 * 60_000; }
+    /** The chats to show, newest first: one row for each title in a project, because subagents repeat the title. */
+    static java.util.List<JSONObject> distinct(JSONArray chats) {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (chats != null) for (int i = 0; i < chats.length(); i++) {
+            JSONObject chat = chats.optJSONObject(i);
+            if (chat != null && !chat.optString("title").isBlank() && seen.add(chat.optString("project") + "\n" + chat.optString("title"))) out.add(chat);
+        }
+        return out;
+    }
     static String label(String status, boolean connected) {
         if (!connected) return "Offline · last known task";
         return switch (status) {

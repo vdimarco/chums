@@ -17,51 +17,29 @@ import android.widget.TextView;
 
 /** Colours, type and controls that every screen of one provider app shares. */
 final class WatchUi {
-    private static final String AGENT = BuildConfig.FIXED_AGENT;
     private WatchUi() { }
 
-    static int background() {
-        return switch (AGENT) { case "noodle" -> 0xff101112; case "squint" -> 0xff190b05; default -> 0xff000000; };
-    }
-    static int ink() {
-        return switch (AGENT) { case "noodle" -> 0xfffffaf0; case "squint" -> 0xffffedd5; default -> 0xffffffff; };
-    }
-    static int muted() {
-        return switch (AGENT) { case "noodle" -> 0xffc9c6ba; case "squint" -> 0xffe0c5a8; case "stretch" -> 0xffb9bbb6; default -> 0xffb5c3c5; };
-    }
+    // The tokens come from the build's skin, so the side pages match the other screens.
+    static int background() { return Skin.NOW.bg; }
+    static int ink() { return Skin.NOW.ink; }
+    static int muted() { return Skin.NOW.muted; }
     /** Fill of the primary action. */
-    static int accent() {
-        return switch (AGENT) { case "noodle" -> 0xfffff2d5; case "squint" -> 0xffffedcd; case "stretch" -> 0xffeeeeec; default -> 0xff80e1d6; };
-    }
-    static int onAccent() {
-        return switch (AGENT) { case "noodle" -> 0xff171713; case "squint" -> 0xff251308; case "stretch" -> 0xff101010; default -> 0xff142327; };
-    }
+    static int accent() { return Skin.NOW.accent; }
+    static int onAccent() { return Skin.NOW.onAccent; }
     /** Text that marks a status on the background or on a surface. */
-    static int signal() {
-        return switch (AGENT) { case "noodle" -> 0xfffff2d5; case "squint" -> 0xfff0906a; case "stretch" -> 0xffeeeeec; default -> 0xff80e1d6; };
-    }
-    static int warning() { return 0xffffc58f; }
-    static int danger() { return 0xffff89b1; }
-    static int onDanger() { return 0xff2a0a16; }
+    static int signal() { return Skin.NOW.label; }
+    static int warning() { return Skin.WARN; }
+    static int danger() { return Skin.DANGER; }
+    static int onDanger() { return Skin.ON_DANGER; }
     /** Cards and the agent's messages. */
-    static int surface() {
-        return switch (AGENT) { case "noodle" -> 0xff1c1d1e; case "squint" -> 0xff32180e; case "stretch" -> 0xff17191a; default -> 0xff151c22; };
-    }
-    /** Secondary actions. */
-    static int raised() {
-        return switch (AGENT) { case "noodle" -> 0xff292a29; case "squint" -> 0xff45210f; case "stretch" -> 0xff1f2122; default -> 0xff1d292b; };
-    }
+    static int surface() { return Skin.NOW.surface; }
+    /** Secondary actions and rules. */
+    static int raised() { return Skin.NOW.ring; }
     /** The owner's messages. */
-    static int ownBubble() {
-        return switch (AGENT) { case "noodle" -> 0xff3a3b38; case "squint" -> 0xff6b3219; case "stretch" -> 0xff2c2f31; default -> 0xff1f3d3f; };
-    }
+    static int ownBubble() { return Skin.NOW.mine; }
     /** Corner radius of buttons and cards, in dp. */
-    static int radius() { return "noodle".equals(AGENT) ? 12 : 24; }
-    static Typeface titleFace() {
-        return Typeface.create(switch (AGENT) {
-            case "noodle" -> "monospace"; case "squint" -> "serif"; default -> "sans-serif-medium";
-        }, Typeface.NORMAL);
-    }
+    static int radius() { return Math.round(Skin.NOW.radius); }
+    static Typeface titleFace() { return Skin.NOW.displayFace(); }
 
     static int dp(Context context, float value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
     static GradientDrawable fill(Context context, int color, float radius) {

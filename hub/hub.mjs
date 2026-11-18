@@ -9,6 +9,7 @@
 //
 // Speech-to-text runs in a kept-alive `whisperkit-cli serve` child so each utterance costs ~0.2 s.
 
+import { listChats, readChat } from './chats.mjs'
 import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -1334,6 +1335,19 @@ const handle = async (req, res) => {
       catch (e) { return json(res, e.code ?? 500, { error: e.message }) }
     }
     if (p === '/v1/verdict' && req.method === 'POST') {
+    // the chats this computer holds for an agent's provider, newest first, and the last messages of one of them
+    const chatPath = p.match(/^\/v1\/chats(?:\/([\w.:-]{1,120}))?$/)
+    if (chatPath && req.method === 'GET') {
+      const agent = agentNamed(url.searchParams.get('agent') ?? '')
+      if (!agent) return json(res, 404, { error: 'No such agent' })
+      // each provider app is tied to one agent, whatever runtime that agent happens to run on today
+      const provider = { noodle: 'codex', squint: 'claude', stretch: 'hermes', ray: 'hermes' }[agent.id] ?? agent.runtime ?? 'claude'
+      try {
+        if (!chatPath[1]) return json(res, 200, { provider, chats: await listChats(provider, 12) })
+        const chat = await readChat(provider, chatPath[1], 12)
+        return chat ? json(res, 200, chat) : json(res, 404, { error: 'No such chat on this computer' })
+      } catch (e) { log('chats:', e.message); return json(res, 500, { error: 'Could not read chats on this computer' }) }
+    }
       const { requestId, behavior } = await readJSON(req)
       return json(res, 200, verdict(requestId, behavior === 'allow' ? 'allow' : 'deny'))
     }

@@ -35,9 +35,13 @@ public final class MainActivity extends Activity {
     private boolean active, settings, sending, speechReady, history;
     private TextToSpeech speech;
     private PetDrawable pet;
+    private ProviderHome home;
     private ProviderPager pager;
     private LinearLayout jobsPage, historyPage;
     private String sideShown = "";
+    /** The provider's chats on the hub's computer, newest first. They include work that did not start on the watch. */
+    private JSONArray chats;
+    private final Runnable loadChats = this::loadChats;
     private int sidePage;
     private ImageView companion;
     private String migo = "noodle";
@@ -87,6 +91,7 @@ public final class MainActivity extends Activity {
         // The last state that the hub sent. The side pages show it until the hub answers, and when it does not.
         try { if (hub != null) state = new JSONObject(prefs.getString("state:" + selected, "")); }
         catch (JSONException ignored) { }
+        try { chats = new JSONArray(prefs.getString("chats:" + selected, "")); } catch (JSONException ignored) { }
         if (hub == null) showSettings(); else showHome();
         main.post(this::handleTileAction);
     }
@@ -109,12 +114,14 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume(); active = true; if (pet != null) pet.start(); main.removeCallbacks(cycleMigo);
+        Usage.screen(this, settings ? "settings" : history ? "history" : "home");
         if (!settings && !history) main.postDelayed(cycleMigo, 8000); startPolling();
     }
     @Override protected void onPause() {
-        active = false; generation++; main.removeCallbacks(cycleMigo);
+        active = false; generation++; main.removeCallbacks(cycleMigo); main.removeCallbacks(loadChats);
         if (pet != null) pet.stop();
         if (speech != null) speech.stop();
+        Usage.pause(this);
         super.onPause();
     }
     @Override protected void onDestroy() {
@@ -125,36 +132,70 @@ public final class MainActivity extends Activity {
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void page(String title) {
-        main.removeCallbacks(cycleMigo); companion = null; companionCaption = null; taskCard = null;
+        main.removeCallbacks(cycleMigo); companion = null; companionCaption = null; taskCard = null; home = null;
         pager = null; jobsPage = null; historyPage = null;
         if (pet != null) { pet.stop(); pet = null; }
-        content = WatchUi.page(this);
-        scroll = (ScrollView) content.getParent();
-        heading = WatchUi.title(content, title);
+        scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        // Round screens need space above and below the first and last controls.
+        content.setPadding(dp(22), dp(22), dp(22), dp(40));
+        scroll.setBackgroundColor(Skin.NOW.bg);
+        scroll.addView(content);
+        setContentView(scroll);
+        heading = label(title, 18);
+        heading.setTypeface(Skin.NOW.displayFace());
+        scroll.setOnGenericMotionListener((v, event) -> {
+            if (event.getAction() != android.view.MotionEvent.ACTION_SCROLL) return false;
+            scroll.smoothScrollBy(0, Math.round(-event.getAxisValue(android.view.MotionEvent.AXIS_SCROLL) * dp(36)));
+            return true;
+        });
+        scroll.requestFocus();
     }
-    private TextView label(String text, int size) { return WatchUi.text(content, text, size, WatchUi.ink()); }
-    private Button button(String title, Runnable action) { return WatchUi.button(content, title, false, action); }
-    private Button primary(String title, Runnable action) { return WatchUi.button(content, title, true, action); }
+    private TextView label(String text, int size) {
+        TextView v = Ui.text(this, text, size, Skin.NOW.ink, Skin.NOW.bodyFace());
+        v.setPadding(0, dp(4), 0, dp(4));
+        content.addView(v, new LinearLayout.LayoutParams(-1, -2));
+        return v;
+    }
+    private TextView caption(String text) {
+        TextView v = label(text, 11);
+        v.setTextColor(Skin.NOW.muted); v.setGravity(Gravity.START); v.setPadding(dp(6), dp(10), dp(6), dp(4));
+        return v;
+    }
+    private Button button(String title, Runnable action) { return button(title, Ui.TONAL, action); }
+    private Button button(String title, int kind, Runnable action) {
+        Button b = Ui.pill(this, title, kind, action);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2); params.topMargin = dp(6);
+        content.addView(b, params);
+        return b;
+    }
     private EditText input(String hint, String value, int type) {
-        EditText e = new EditText(this); e.setHint(hint); e.setText(value); e.setTextSize(14);
-        e.setTextColor(WatchUi.ink()); e.setHintTextColor(WatchUi.muted());
-        e.setInputType(type); e.setSingleLine(true); e.setMinHeight(dp(48));
-        e.setPadding(dp(14), 0, dp(14), 0);
-        e.setBackground(WatchUi.fill(this, WatchUi.surface(), WatchUi.radius()));
+        EditText e = new EditText(this); e.setHint(hint); e.setText(value);
+        e.setInputType(type); e.setSingleLine(true); Ui.field(e);
         content.addView(e, new LinearLayout.LayoutParams(-1, -2)); return e;
+    }
+    static int statusColor(String status) {
+        if (status.startsWith("Needs") || status.startsWith("Waiting")) return Skin.WARN;
+        if (status.startsWith("Offline") || status.startsWith("Agent offline") || status.startsWith("Checking") || status.startsWith("No task")) return Skin.NOW.muted;
+        return Skin.NOW.label;
     }
     private void notice(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
 
     // shortcut: manual pairing for sideloaded builds, replace with phone pairing before store release.
     @android.annotation.SuppressLint("WearPasswordInput")
     private void showSettings() {
+        Usage.screen(this, "settings");
         settings = true; generation++;
         page("Connect " + BuildConfig.APP_TITLE);
-        label("Hub HTTPS address", 12).setTextColor(WatchUi.muted());
+        caption("Hub HTTPS address");
         EditText url = input("https://your-hub", prefs.getString("url", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        label("Watch token", 12).setTextColor(WatchUi.muted());
+        caption("Watch token");
         EditText token = input("Watch token", prefs.getString("token", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        primary("Save connection", () -> {
+        Ui.spacer(this, content, 6);
+        button("Save connection", Ui.PRIMARY, () -> {
             try {
                 HubConnection next = new HubConnection(url.getText().toString(), token.getText().toString(), BuildConfig.DEBUG);
                 prefs.edit().putString("url", next.base).putString("token", token.getText().toString().trim()).remove("state:" + selected).apply();
@@ -162,12 +203,40 @@ public final class MainActivity extends Activity {
                 showHome(); startPolling();
             } catch (IllegalArgumentException e) { notice(e.getMessage()); }
         });
-        if (hub != null) button("Cancel", () -> { settings = false; showHome(); startPolling(); });
+        if (hub != null) button("Cancel", Ui.OUTLINE, () -> { settings = false; showHome(); startPolling(); });
     }
 
     private void startPolling() {
         int run = ++generation;
         if (active && !settings && hub != null) poll(run, 0);
+        main.removeCallbacks(loadChats); loadChats();
+    }
+    /** Read the provider's chats from the hub's computer now, and again each 20 seconds while the app is in view. */
+    private void loadChats() {
+        main.removeCallbacks(loadChats);
+        if (!active || settings || hub == null || BuildConfig.FIXED_AGENT.isEmpty()) return;
+        HubConnection client = hub; String agent = selected; int run = generation;
+        commands.execute(() -> {
+            JSONArray found = null;
+            try { found = new JSONObject(client.request("/v1/chats?agent=" + agent, null)).optJSONArray("chats"); } catch (Exception ignored) { }
+            JSONArray next = found;
+            main.post(() -> {
+                if (!active || run != generation) return;
+                if (next != null && agent.equals(selected)) {
+                    chats = next; prefs.edit().putString("chats:" + agent, next.toString()).apply();
+                    sideShown = ""; if (!history) updateHeading();
+                }
+                main.postDelayed(loadChats, 20_000);
+            });
+        });
+    }
+    private void openChat(JSONObject chat) {
+        startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected)
+            .putExtra("chat", chat.optString("id")).putExtra("title", chat.optString("title")));
+    }
+    private static String chatWords(JSONObject chat) {
+        String title = chat.optString("title").replaceAll("https?://(www\\.)?", ""), project = chat.optString("project");
+        return project.isEmpty() ? title : title + " · " + project;
     }
     private void poll(int run, long revision) {
         if (!active || settings || run != generation) return;
@@ -180,6 +249,8 @@ public final class MainActivity extends Activity {
                     boolean changed = state == null || next.optLong("rev") != state.optLong("rev");
                     boolean wasConnected = connected;
                     state = next; connected = true;
+                    String follow = AgentVoice.onHub(next, selected);
+                    if (!follow.equals(selected)) { selected = follow; migo = follow; prefs.edit().putString("agent", follow).apply(); changed = true; }
                     if (changed) prefs.edit().putString("state:" + selected, TaskSummary.keep(next, selected).toString()).apply();
                     if ((changed || !wasConnected) && history) showConversation();
                     if (!history) updateHeading();
@@ -202,6 +273,7 @@ public final class MainActivity extends Activity {
     private void showHome() {
         int position = scroll == null || settings || history ? 0 : scroll.getScrollY();
         settings = false; history = false;
+        Usage.screen(this, "home");
         if (!BuildConfig.FIXED_AGENT.isEmpty()) { showProviderHome(); return; }
         JSONArray agents = array("agents");
         JSONObject agent = null;
@@ -265,11 +337,12 @@ public final class MainActivity extends Activity {
     }
 
     private void showProviderHome() {
+        Usage.screen(this, "home");
         if (getResources().getConfiguration().fontScale >= 1.3f) {
             page(BuildConfig.APP_TITLE);
             connectionMark = label("", 12);
             taskCard = button("Current task", this::showConversation);
-            primary("Talk to " + AgentVoice.name(selected), this::startLive);
+            button("Talk to " + AgentVoice.name(selected), Ui.PRIMARY, this::startLive);
             button("Conversation history", this::showConversation);
             button("Connection settings", this::showSettings);
             updateHeading();
@@ -278,7 +351,7 @@ public final class MainActivity extends Activity {
         main.removeCallbacks(cycleMigo);
         if (pet != null) { pet.stop(); pet = null; }
         companion = null; scroll = null;
-        ProviderHome home = new ProviderHome(this, BuildConfig.FIXED_AGENT,
+        home = new ProviderHome(this, BuildConfig.FIXED_AGENT,
             this::startLive, this::showConversation, this::showSettings);
         connectionMark = home.status;
         taskCard = home.task;
@@ -308,9 +381,21 @@ public final class MainActivity extends Activity {
             if (session != null && selected.equals(session.optString("name"))) helpers = session.optInt("subagents");
         }
 
+        java.util.List<JSONObject> all = TaskSummary.distinct(chats), running = new java.util.ArrayList<>();
+        for (JSONObject chat : all) if (TaskSummary.active(chat, now)) running.add(chat);
+        boolean quiet = "No task running".equals(task.status);
+
         jobsPage.removeAllViews();
         jobsPage.setPadding(dp(20), dp(18), dp(20), dp(40));
         WatchUi.title(jobsPage, "Jobs").setTextSize(14);
+        if (!running.isEmpty()) {
+            WatchUi.text(jobsPage, running.size() + " active on your computer", 12, WatchUi.signal()).setPadding(0, 0, 0, dp(2));
+            for (JSONObject chat : running)
+                WatchUi.row(jobsPage, WatchUi.lead(WatchUi.ago(chat.optLong("at"), now), WatchUi.signal(), chatWords(chat)), 12, 2)
+                    .setOnClickListener(v -> openChat(chat));
+            WatchUi.space(jobsPage, 4);
+            WatchUi.text(jobsPage, "From the watch", 10, WatchUi.muted()).setPadding(0, 0, 0, 0);
+        }
         WatchUi.text(jobsPage, task.status + (helpers > 0 ? " · " + helpers + (helpers == 1 ? " subagent" : " subagents") : ""), 12, statusColor(task.status))
             .setPadding(0, 0, 0, dp(2));
         TextView title = WatchUi.text(jobsPage, task.title, 13, WatchUi.ink());
@@ -342,7 +427,8 @@ public final class MainActivity extends Activity {
             WatchUi.row(jobsPage, WatchUi.lead((WatchUi.ago(tool.optLong("at"), now) + " " + name).trim(), WatchUi.signal(), words), 11, 1);
             activity++;
         }
-        if (activity == 0) WatchUi.row(jobsPage, state == null ? "Waiting for the hub" : "No recent tool events", 11, 1).setTextColor(WatchUi.muted());
+        if (activity == 0 && !(quiet && !running.isEmpty()))
+            WatchUi.row(jobsPage, state == null ? "Waiting for the hub" : "No recent tool events", 11, 1).setTextColor(WatchUi.muted());
         sideActions(jobsPage);
 
         historyPage.removeAllViews();
@@ -361,8 +447,14 @@ public final class MainActivity extends Activity {
             message.setOnClickListener(v -> showConversation());
             messages++;
         }
-        count.setText(messages == 0 ? (state == null ? "Waiting for the hub" : "No messages yet")
-            : messages + (messages == 1 ? " message" : " messages") + ", newest first" + (connected ? "" : " · offline"));
+        count.setText(messages == 0 ? (state == null ? "Waiting for the hub" : "No messages from the watch yet")
+            : messages + (messages == 1 ? " message" : " messages") + " from the watch, newest first" + (connected ? "" : " · offline"));
+        WatchUi.space(historyPage, 6);
+        WatchUi.text(historyPage, chats == null ? "Chats on your computer: waiting for the hub"
+            : all.isEmpty() ? "No chats found on your computer" : "Chats on your computer", 10, WatchUi.muted()).setPadding(0, 0, 0, 0);
+        for (JSONObject chat : all)
+            WatchUi.row(historyPage, WatchUi.lead(WatchUi.ago(chat.optLong("at"), now),
+                TaskSummary.active(chat, now) ? WatchUi.signal() : WatchUi.muted(), chatWords(chat)), 12, 2).setOnClickListener(v -> openChat(chat));
         sideActions(historyPage);
     }
     /** The actions at the end of a side page: start a new task by voice or by text, or open the conversation. */
@@ -381,60 +473,71 @@ public final class MainActivity extends Activity {
     }
 
     private void showConversation() {
+        Usage.screen(this, "history");
         int position = history ? scroll.getScrollY() : 0;
         history = true;
         String name = AgentVoice.name(selected);
         for (int i = 0; i < array("agents").length(); i++) {
             JSONObject agent = array("agents").optJSONObject(i);
-            if (agent != null && selected.equals(agent.optString("id"))) name = agent.optString("name", selected);
+            if (agent != null && selected.equals(agent.optString("id"))) name = agent.optString("name", name);
         }
         page(name);
+        Skin skin = Skin.NOW;
         if (!BuildConfig.FIXED_AGENT.isEmpty()) {
             TaskSummary task = TaskSummary.from(state, selected, connected);
-            label(task.status, 12).setTextColor(statusColor(task.status));
-            label(task.title, 14);
-            if (!task.detail.isBlank() && !task.detail.equals(task.title)) label(task.detail, 12).setTextColor(WatchUi.muted());
-            WatchUi.space(content, 4);
+            TextView status = label(task.status, 11);
+            status.setTextColor(statusColor(task.status)); status.setTypeface(skin.strongFace()); status.setLetterSpacing(.06f);
+            label(task.title, 14).setTypeface("serif".equals(skin.display) ? skin.displayFace() : skin.bodyFace());
+            if (!task.detail.isBlank() && !task.detail.equals(task.title)) label(task.detail, 12).setTextColor(skin.muted);
+            Ui.spacer(this, content, 4);
         }
-        primary("Live voice", this::startLive);
+        button("Live voice", Ui.PRIMARY, this::startLive);
         button("Type a message", this::composeMessage).setEnabled(!sending);
+        button("Recent chats", () -> startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected).putExtra("chats", true)));
         button("Agent workspace", () -> startActivity(new Intent(this, WorkspaceActivity.class).putExtra("agent", selected)));
-        if (state == null) label(connected ? "No messages yet" : "Waiting for the hub. Check your connection.", 12).setTextColor(WatchUi.muted());
+        if (state == null) label(connected ? "No messages yet" : "Waiting for the hub. Check your connection.", 12).setTextColor(skin.muted);
         for (int i = 0; i < array("agents").length(); i++) {
             JSONObject agent = array("agents").optJSONObject(i);
             if (agent != null && selected.equals(agent.optString("id")) && ("blocked".equals(agent.optString("status")) || "limited".equals(agent.optString("status")))) {
-                label(agent.optString("line", "Agent needs attention"), 12).setTextColor(WatchUi.warning());
+                label(agent.optString("line", "Agent needs attention"), 12).setTextColor(Skin.WARN);
             }
         }
         JSONArray approvals = array("approvals");
         for (int i = 0; i < approvals.length(); i++) {
             JSONObject a = approvals.optJSONObject(i);
             if (a == null || !selected.equals(a.optString("session"))) continue;
-            WatchUi.space(content, 6);
-            label("Needs approval", 12).setTextColor(WatchUi.warning());
-            WatchUi.card(content, (a.optString("tool") + "\n" + a.optString("description") + "\n" + a.optString("preview")).trim(),
-                WatchUi.surface(), Gravity.CENTER);
+            LinearLayout request = new LinearLayout(this); request.setOrientation(LinearLayout.VERTICAL);
+            request.setPadding(dp(14), dp(10), dp(14), dp(10));
+            request.setBackground(Ui.panel(this, skin.surface, Skin.WARN, skin.card));
+            String[] parts = {"Needs approval · " + a.optString("tool"), a.optString("description"), a.optString("preview")};
+            for (int part = 0; part < parts.length; part++) {
+                if (parts[part].isBlank()) continue;
+                TextView line = Ui.text(this, parts[part], part == 1 ? 13 : 11, part == 0 ? Skin.WARN : part == 1 ? skin.ink : skin.muted,
+                    part == 0 ? skin.strongFace() : part == 2 ? android.graphics.Typeface.MONOSPACE : skin.bodyFace());
+                line.setGravity(Gravity.START); line.setPadding(0, dp(2), 0, dp(2)); request.addView(line);
+            }
+            LinearLayout.LayoutParams around = new LinearLayout.LayoutParams(-1, -2); around.topMargin = dp(12);
+            content.addView(request, around);
             String id = a.optString("requestId");
-            Button allow = primary("Hold to allow", () -> notice("Hold to approve this request"));
+            Button allow = button("Hold to allow", Ui.WARN, () -> notice("Hold to approve this request"));
             allow.setEnabled(!sending);
             allow.setOnLongClickListener(v -> { verdict(id, true); return true; });
-            button("Deny", () -> verdict(id, false)).setEnabled(!sending);
+            button("Deny", Ui.OUTLINE, () -> verdict(id, false)).setEnabled(!sending);
         }
+        Ui.spacer(this, content, 8);
         String latest = "";
-        boolean messages = false;
         JSONArray lines = array("spoken");
         for (int i = lines.length() - 1; i >= 0; i--) {
             JSONObject line = lines.optJSONObject(i);
             if (line == null || !TaskSummary.mine(line, selected)) continue;
             String text = line.optString("text");
-            boolean own = "echo".equals(line.optString("kind"));
-            if (!messages) { messages = true; WatchUi.space(content, 8); label("Messages, newest first", 11).setTextColor(WatchUi.muted()); }
-            // The owner's messages are on the right. The agent's messages are on the left.
-            TextView message = WatchUi.card(content, text, own ? WatchUi.ownBubble() : WatchUi.surface(), own ? Gravity.END : Gravity.START);
-            message.setContentDescription((own ? "You: " : name + ": ") + text);
-            if (latest.isEmpty() && !"echo".equals(line.optString("kind"))) latest = text;
+            boolean mine = "echo".equals(line.optString("kind"));
+            if (!text.isBlank()) Ui.bubble(this, content, text, mine);
+            if (latest.isEmpty() && !mine) latest = text;
             if (line.optJSONObject("card") != null) {
-                WatchCard card = new WatchCard(this); content.addView(card); card.show(line.optJSONObject("card"));
+                WatchCard card = new WatchCard(this);
+                LinearLayout.LayoutParams around = new LinearLayout.LayoutParams(-1, -2); around.topMargin = dp(6);
+                content.addView(card, around); card.show(line.optJSONObject("card"));
             }
             JSONObject artifact = line.optJSONObject("artifact");
             if (artifact != null && artifact.optString("id").matches("[0-9a-f]{12}")) {
@@ -442,13 +545,13 @@ public final class MainActivity extends Activity {
                     new Intent(this, WorkspaceActivity.class).putExtra("agent", selected).putExtra("artifact", artifact.toString())));
             }
         }
+        Ui.spacer(this, content, 8);
         String reply = latest;
-        WatchUi.space(content, 6);
         if (!reply.isEmpty()) button("Read reply aloud", () -> {
             if (speechReady) speech.speak(reply, TextToSpeech.QUEUE_FLUSH, null, "reply");
             else notice("Speech output is unavailable");
         });
-        button("Back to home", this::showHome);
+        button("Back to home", Ui.OUTLINE, this::showHome);
         scroll.post(() -> scroll.scrollTo(0, position));
     }
 
@@ -479,6 +582,7 @@ public final class MainActivity extends Activity {
             if (text.isEmpty()) { message.setError("Enter a message"); return; }
             if (sending) return;
             prefs.edit().putString("draft", text).apply();
+            Usage.event(this, "message_sent");
             post("/v1/say", object("agent", selected, "text", text, "device", "watch"));
             dialog.dismiss();
             });
@@ -505,16 +609,23 @@ public final class MainActivity extends Activity {
     }
     private void updateHeading() {
         if (!BuildConfig.FIXED_AGENT.isEmpty()) {
+            TaskSummary task = TaskSummary.from(state, selected, connected);
             if (taskCard != null) {
-                TaskSummary task = TaskSummary.from(state, selected, connected);
-                android.text.SpannableString words = new android.text.SpannableString(task.status + "\n" + task.title);
-                words.setSpan(new android.text.style.ForegroundColorSpan(statusColor(task.status)), 0, task.status.length(), 0);
-                words.setSpan(new android.text.style.RelativeSizeSpan(.84f), 0, task.status.length(), 0);
-                taskCard.setText(words);
-                MigosTileService.remember(this, task.status, task.title);
-                showSidePages();
-                taskCard.setContentDescription("Open current task. " + task.status + ". " + task.title);
+                // The line above the card already says the hub is offline.
+                // Work that started on the computer shows here when the watch's own agent has no task.
+                JSONObject busy = null;
+                if (connected && "No task running".equals(task.status))
+                    for (JSONObject chat : TaskSummary.distinct(chats)) if (TaskSummary.active(chat, System.currentTimeMillis())) { busy = chat; break; }
+                String label = busy != null ? "Active on your computer" : home != null && !connected ? "Last known task" : task.status;
+                String words = busy != null ? busy.optString("title") : task.title;
+                taskCard.setText(Ui.labelled(label, busy != null ? Skin.NOW.label : statusColor(task.status),
+                    (home != null && "noodle".equals(BuildConfig.FIXED_AGENT) ? "> " : "") + words, true));
+                taskCard.setContentDescription("Open current task. " + label + ". " + words);
             }
+            MigosTileService.remember(this, task.status, task.title);
+            showSidePages();
+            if (home != null) home.state(!connected ? ProviderHome.OFFLINE : statusColor(task.status) == Skin.WARN ? ProviderHome.ATTENTION
+                : "Working".equals(task.status) ? ProviderHome.WORKING : ProviderHome.IDLE);
             String status = connected ? "Connected" : "Offline";
             if (connected) {
                 for (int i = 0; i < array("agents").length(); i++) {
@@ -528,21 +639,16 @@ public final class MainActivity extends Activity {
                 }
             }
             android.text.SpannableString mark = new android.text.SpannableString((connected ? "●  " : "○  ") + status);
-            mark.setSpan(new android.text.style.ForegroundColorSpan(connected ? statusColor(status) : WatchUi.muted()), 0, 1, 0);
+            mark.setSpan(new android.text.style.ForegroundColorSpan(!connected ? Skin.NOW.muted : status.startsWith("Needs") ? Skin.WARN : Skin.NOW.label),
+                0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             connectionMark.setText(mark);
-            connectionMark.setTextColor(WatchUi.muted());
+            connectionMark.setTextColor(Skin.NOW.muted);
             connectionMark.setContentDescription(status + ("Needs approval".equals(status) ? ". Open conversation history to review." : ""));
             return;
         }
         connectionMark.setText(connected ? "✓" : "·");
         connectionMark.setTextColor(connected ? WatchUi.signal() : WatchUi.warning());
         connectionMark.setContentDescription(connected ? "Connected" : "Reconnecting");
-    }
-    /** Amber marks a state that needs the owner. Other states use the provider's signal colour. */
-    static int statusColor(String status) {
-        if (status.startsWith("Needs") || status.startsWith("Waiting")) return WatchUi.warning();
-        if (status.startsWith("Offline") || status.startsWith("Agent offline") || status.startsWith("Checking") || status.startsWith("No task")) return WatchUi.muted();
-        return WatchUi.signal();
     }
     static String providerStatus(String status) {
         return switch (status) {
